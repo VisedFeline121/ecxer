@@ -1,0 +1,58 @@
+PENNY STOCK DASHBOARD - MVP ROADMAP
+=====================================
+
+Project Goal: Build a live MVP dashboard showing trending penny stocks from Reddit discussions
+
+STEP 1: Choose Tech Stack
+- Decide on programming language and framework
+- Consider your existing skills and speed requirements
+- Options: Next.js/React, Python/Flask, or other preferred stack
+
+STEP 2: Setup Development Environment
+- Create project structure
+- Install dependencies
+- Set up version control (Git)
+
+STEP 3: Build Reddit Data Collection
+- Access Reddit API or scraping method
+- Target specific penny stock subreddits (r/pennystocks, r/wallstreetbets, r/10xPennyStocks)
+- Extract post data (titles, upvotes, timestamps)
+
+STEP 4: Implement Stock Analysis
+- Detect stock symbols in posts (regex patterns)
+- Calculate discussion volume and trending metrics
+- Store processed data (JSON file or simple database)
+
+STEP 5: Create Data API
+- Build endpoint to serve trending stock data
+- Add basic caching and refresh logic (10-15 minute intervals)
+- Return JSON with stock symbols, discussion counts, trending percentages
+
+STEP 6: Build Dashboard UI
+- Create interface matching the dark theme design concept
+- Display trending stocks list (left panel)
+- Add stock detail views (right panel)
+- Make it responsive for mobile
+
+STEP 7: Deploy to Production
+- Set up hosting platform (Vercel, Netlify, or similar)
+- Set up site analytics
+- Deploy application
+- Configure domain (optional - can use free subdomain)
+
+STEP 8: Test and Validate
+- Test live application functionality
+- Share with target audience (r/pennystocks community)
+- Collect feedback and usage data
+- Measure if people actually use it
+
+SUCCESS METRICS:
+- People visit the site
+- Users return to check trends
+- Community engagement and feedback
+- Feature requests from users
+
+TIMELINE: 3-5 days total
+COST: $0-20 for first month (free hosting tiers)
+
+Each step builds on the previous one. Start with Step 1 and work sequentially.

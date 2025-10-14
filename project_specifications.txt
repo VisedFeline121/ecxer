@@ -1,0 +1,89 @@
+PENNY STOCK DASHBOARD - PROJECT SPECIFICATIONS
+==============================================
+
+PROBLEM STATEMENT:
+Traders struggle to find hot stocks early before they explode. Current methods require manually scrolling through multiple Reddit subreddits, missing opportunities.
+
+TARGET USER:
+Day traders and retail investors looking for stocks about to explode, who want to get in early on momentum plays.
+
+CORE VALUE PROPOSITION:
+"Find the next explosive penny stock before everyone else does"
+
+CORE USER EXPERIENCE:
+1. Visitor enters site
+2. Immediately sees stocks with highest positive speculation
+3. Clicks on interesting stock to see detailed discussions
+4. Reviews both bullish and bearish sentiment
+5. Makes informed decision on which stock to research further
+
+MVP FEATURES:
+
+DASHBOARD LAYOUT:
+- Left Panel: "Trending Stocks" list
+  - Stock symbol (e.g., "DVLT")
+  - Current price with mini chart/sparkline
+  - Speculation score (positive mentions vs negative)
+  - Discussion velocity (posts per hour)
+  - Trending indicator (↑↓ with percentage)
+
+- Right Panel: Selected Stock Details
+  - Stock symbol and current price
+  - Price chart (1-day, 1-week options)
+  - "Bullish Posts" section (most upvoted positive posts)
+  - "Bearish Posts" section (most upvoted negative posts)
+  - "Recent Activity" (latest posts/comments)
+
+DATA REQUIREMENTS:
+
+Reddit Data Collection:
+- Target Subreddits: r/pennystocks, r/wallstreetbets, r/10xPennyStocks, r/SmallStreetBets
+- Data Points: Post title, content, upvotes, comments, timestamp, subreddit
+- Timeframe: Last 7 days (focus on sustained momentum)
+- Update Frequency: Every 15-30 minutes
+
+Stock Data:
+- Current price (Yahoo Finance API or Alpha Vantage)
+- Price history for charts
+- Stock symbol validation
+
+Sentiment Analysis:
+- Positive speculation keywords: "moon", "rocket", "breakout", "squeeze", "catalyst"
+- Negative keywords: "dump", "crash", "avoid", "pump", "scam"
+- Calculate sentiment score per stock
+
+TECHNICAL SPECIFICATIONS:
+
+Frontend:
+- Dark theme (matching your design)
+- Responsive design (mobile-first)
+- Real-time updates (refresh every 15-30 minutes)
+- Fast loading (< 3 seconds)
+
+Backend:
+- Reddit API integration
+- Stock price API integration
+- Sentiment analysis (simple keyword matching for MVP)
+- Data caching (15-30 minute refresh cycles)
+
+Data Storage:
+- JSON files or simple database
+- Store last 7 days of data
+- Archive older data
+
+SUCCESS METRICS:
+- Time to identify trending stock (< 30 seconds)
+- User engagement (time on site, return visits)
+- Community feedback and feature requests
+- Actual usage (people coming back to check trends)
+
+MVP SCOPE LIMITATIONS:
+- No user accounts
+- No historical data beyond 7 days
+- No advanced sentiment analysis (just keyword matching)
+- No real-time price updates (15-30 min refresh)
+- No investment advice or recommendations
+- No portfolio tracking
+
+DISCLAIMER:
+"Not financial advice. For entertainment and research purposes only. Do your own due diligence before investing."
