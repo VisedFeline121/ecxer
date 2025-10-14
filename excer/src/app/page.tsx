@@ -1,0 +1,212 @@
+'use client';
+
+import { MessageCircle, TrendingDown, TrendingUp, Users } from 'lucide-react';
+import { useEffect, useState } from 'react';
+
+interface StockData {
+  symbol: string;
+  mentions: number;
+  positiveMentions: number;
+  negativeMentions: number;
+  sentimentScore: number;
+  posts: Array<{
+    title: string;
+    score: number;
+    subreddit: string;
+    permalink: string;
+    author: string;
+  }>;
+  lastUpdated: number;
+}
+
+export default function Home() {
+  const [stocks, setStocks] = useState<StockData[]>([]);
+  const [selectedStock, setSelectedStock] = useState<StockData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [lastUpdated, setLastUpdated] = useState<number>(0);
+
+  useEffect(() => {
+    fetchStocks();
+    // Refresh every 5 minutes
+    const interval = setInterval(fetchStocks, 5 * 60 * 1000);
+    return () => clearInterval(interval);
+  }, [selectedStock]);
+
+  const fetchStocks = async () => {
+    try {
+      const response = await fetch('/api/reddit');
+      const data = await response.json();
+      setStocks(data.stocks || []);
+      setLastUpdated(data.lastUpdated || Date.now());
+      if (data.stocks && data.stocks.length > 0 && !selectedStock) {
+        setSelectedStock(data.stocks[0]);
+      }
+    } catch (error) {
+      console.error('Error fetching stocks:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const formatTimeAgo = (timestamp: number) => {
+    const now = Date.now();
+    const diff = now - timestamp;
+    const minutes = Math.floor(diff / 60000);
+    if (minutes < 1) return 'Just now';
+    if (minutes < 60) return `${minutes}m ago`;
+    const hours = Math.floor(minutes / 60);
+    if (hours < 24) return `${hours}h ago`;
+    const days = Math.floor(hours / 24);
+    return `${days}d ago`;
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-900 flex items-center justify-center">
+        <div className="text-white text-xl">Loading trending stocks...</div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-gray-900 text-white">
+      {/* Header */}
+      <header className="border-b border-gray-800 p-6">
+        <div className="max-w-7xl mx-auto flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold text-white">excer</h1>
+            <p className="text-gray-400 text-sm">Penny Stock Sentiment Tracker</p>
+          </div>
+          <div className="text-right">
+            <div className="text-sm text-gray-400">Last updated</div>
+            <div className="text-sm text-white">{formatTimeAgo(lastUpdated)}</div>
+          </div>
+        </div>
+      </header>
+
+      <div className="max-w-7xl mx-auto p-6">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* Left Panel - Trending Stocks */}
+          <div className="lg:col-span-1">
+            <div className="bg-gray-800 rounded-lg p-6">
+              <h2 className="text-xl font-semibold mb-4 flex items-center">
+                <TrendingUp className="w-5 h-5 mr-2" />
+                Trending Stocks ({stocks.length})
+              </h2>
+              
+              <div className="space-y-3">
+                {stocks.map((stock) => (
+                  <div
+                    key={stock.symbol}
+                    onClick={() => setSelectedStock(stock)}
+                    className={`p-4 rounded-lg cursor-pointer transition-colors ${
+                      selectedStock?.symbol === stock.symbol
+                        ? 'bg-blue-600'
+                        : 'bg-gray-700 hover:bg-gray-600'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="font-bold text-lg">${stock.symbol}</span>
+                      <div className="flex items-center">
+                        {stock.sentimentScore > 0 ? (
+                          <TrendingUp className="w-4 h-4 text-green-400" />
+                        ) : (
+                          <TrendingDown className="w-4 h-4 text-red-400" />
+                        )}
+                        <span className={`ml-1 text-sm ${
+                          stock.sentimentScore > 0 ? 'text-green-400' : 'text-red-400'
+                        }`}>
+                          {stock.sentimentScore > 0 ? '+' : ''}{stock.sentimentScore}
+                        </span>
+                      </div>
+                    </div>
+                    
+                    <div className="flex items-center justify-between text-sm text-gray-300">
+                      <span className="flex items-center">
+                        <MessageCircle className="w-4 h-4 mr-1" />
+                        {stock.mentions} mentions
+                      </span>
+                      <span className="flex items-center">
+                        <Users className="w-4 h-4 mr-1" />
+                        {stock.positiveMentions}↑ {stock.negativeMentions}↓
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* Right Panel - Stock Details */}
+          <div className="lg:col-span-2">
+            {selectedStock ? (
+              <div className="bg-gray-800 rounded-lg p-6">
+                <div className="flex items-center justify-between mb-6">
+                  <h2 className="text-2xl font-bold">${selectedStock.symbol}</h2>
+                  <div className="text-right">
+                    <div className="text-sm text-gray-400">Sentiment Score</div>
+                    <div className={`text-xl font-bold ${
+                      selectedStock.sentimentScore > 0 ? 'text-green-400' : 'text-red-400'
+                    }`}>
+                      {selectedStock.sentimentScore > 0 ? '+' : ''}{selectedStock.sentimentScore}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-3 gap-4 mb-6">
+                  <div className="bg-gray-700 rounded-lg p-4 text-center">
+                    <div className="text-2xl font-bold text-blue-400">{selectedStock.mentions}</div>
+                    <div className="text-sm text-gray-400">Total Mentions</div>
+                  </div>
+                  <div className="bg-gray-700 rounded-lg p-4 text-center">
+                    <div className="text-2xl font-bold text-green-400">{selectedStock.positiveMentions}</div>
+                    <div className="text-sm text-gray-400">Bullish</div>
+                  </div>
+                  <div className="bg-gray-700 rounded-lg p-4 text-center">
+                    <div className="text-2xl font-bold text-red-400">{selectedStock.negativeMentions}</div>
+                    <div className="text-sm text-gray-400">Bearish</div>
+                  </div>
+                </div>
+
+                <div>
+                  <h3 className="text-lg font-semibold mb-4">Recent Discussions</h3>
+                  <div className="space-y-3">
+                    {selectedStock.posts.slice(0, 10).map((post, index) => (
+                      <div key={index} className="bg-gray-700 rounded-lg p-4">
+                        <div className="flex items-start justify-between mb-2">
+                          <h4 className="font-medium text-sm line-clamp-2">{post.title}</h4>
+                          <span className="text-xs text-gray-400 ml-2 flex-shrink-0">
+                            {post.score} ↑
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between text-xs text-gray-400">
+                          <span>r/{post.subreddit}</span>
+                          <span>u/{post.author}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="bg-gray-800 rounded-lg p-6 flex items-center justify-center">
+                <div className="text-center text-gray-400">
+                  <TrendingUp className="w-12 h-12 mx-auto mb-4" />
+                  <p>Select a stock to view details</p>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Footer */}
+      <footer className="border-t border-gray-800 p-6 mt-12">
+        <div className="max-w-7xl mx-auto text-center text-gray-400 text-sm">
+          <p>Not financial advice. For entertainment and research purposes only.</p>
+          <p className="mt-2">Data from Reddit • Updates every 5 minutes</p>
+        </div>
+      </footer>
+    </div>
+  );
+}
