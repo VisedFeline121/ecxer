@@ -10,6 +10,7 @@ interface StockData {
   negativeMentions: number;
   sentimentScore: number;
   posts: Array<{
+    id: string;
     title: string;
     score: number;
     subreddit: string;
@@ -25,6 +26,8 @@ export default function Home() {
   const [loading, setLoading] = useState(true);
   const [lastUpdated, setLastUpdated] = useState<number>(0);
   const [chartType, setChartType] = useState<'area' | 'candles'>('area');
+  const [stockPrice, setStockPrice] = useState<{price: string, change: string, changePercent: string} | null>(null);
+  const [priceLoading, setPriceLoading] = useState(false);
   const widgetRef = useRef<any>(null);
 
   useEffect(() => {
@@ -64,26 +67,91 @@ export default function Home() {
         widgetRef.current = null;
       }
 
-      // Create new widget
-      widgetRef.current = new (window as any).TradingView.widget({
-        container_id: containerId,
-        width: '100%',
-        height: 400,
-        symbol: `NASDAQ:${selectedStock.symbol}`,
-        interval: 'D',
-        timezone: 'Etc/UTC',
-        theme: 'dark',
-        style: chartType === 'area' ? 3 : 1, // 3 for area, 1 for candlesticks
-        locale: 'en',
-        enable_publishing: false,
-        allow_symbol_change: true,
-        hide_top_toolbar: false,
-        hide_side_toolbar: true,
-        details: false,
-        studies: [],
-      });
+      // Create new widget with fallback exchanges
+      const exchanges = ['', 'NASDAQ:', 'NYSE:', 'AMEX:', 'OTC:'];
+      let widgetCreated = false;
+      
+      for (const exchange of exchanges) {
+        try {
+          const symbol = exchange ? `${exchange}${selectedStock.symbol}` : selectedStock.symbol;
+          console.log(`Trying TradingView symbol: ${symbol}`);
+          
+          widgetRef.current = new (window as any).TradingView.widget({
+            container_id: containerId,
+            width: '100%',
+            height: 400,
+            symbol: symbol,
+            interval: 'D',
+            timezone: 'Etc/UTC',
+            theme: 'dark',
+            style: chartType === 'area' ? 3 : 1, // 3 for area, 1 for candlesticks
+            locale: 'en',
+            enable_publishing: false,
+            allow_symbol_change: true,
+            hide_top_toolbar: false,
+            hide_side_toolbar: true,
+            details: true, // Show price details
+            studies: [],
+            show_popup_button: true,
+            popup_width: '1000',
+            popup_height: '650',
+          });
+          
+          widgetCreated = true;
+          console.log(`Successfully created TradingView widget for ${symbol}`);
+          break;
+        } catch (error) {
+          console.log(`Failed to create widget for ${exchange}${selectedStock.symbol}:`, error);
+          continue;
+        }
+      }
+      
+      if (!widgetCreated) {
+        console.error(`Failed to create TradingView widget for ${selectedStock.symbol} on any exchange`);
+      }
     }
   }, [selectedStock, chartType]);
+
+  // Fetch stock price when selectedStock changes
+  useEffect(() => {
+    if (selectedStock) {
+      fetchStockPrice(selectedStock.symbol);
+    }
+  }, [selectedStock]);
+
+  const fetchStockPrice = async (symbol: string) => {
+    setPriceLoading(true);
+    try {
+      console.log(`Fetching real price data for ${symbol}...`);
+      const response = await fetch(`/api/price?symbol=${symbol}`);
+      const data = await response.json();
+      
+      if (response.ok && !data.error) {
+        console.log(`Real price data received for ${symbol}:`, data);
+        setStockPrice({
+          price: data.price,
+          change: data.change,
+          changePercent: data.changePercent
+        });
+      } else {
+        console.log(`No price data found for ${symbol}:`, data);
+        setStockPrice({
+          price: 'N/A',
+          change: 'N/A',
+          changePercent: 'N/A'
+        });
+      }
+    } catch (error) {
+      console.error('Error fetching stock price:', error);
+      setStockPrice({
+        price: 'Error',
+        change: 'N/A',
+        changePercent: 'N/A'
+      });
+    } finally {
+      setPriceLoading(false);
+    }
+  };
 
   const fetchStocks = async () => {
     try {
@@ -100,6 +168,7 @@ export default function Home() {
       setLoading(false);
     }
   };
+
 
   const formatTimeAgo = (timestamp: number) => {
     const now = Date.now();
@@ -202,6 +271,42 @@ export default function Home() {
                       selectedStock.sentimentScore > 0 ? 'text-green-400' : 'text-red-400'
                     }`}>
                       {selectedStock.sentimentScore > 0 ? '+' : ''}{selectedStock.sentimentScore}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Stock Price Display */}
+                <div className="mb-4">
+                  <div className="bg-gray-700 rounded-lg p-4">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <div className="text-sm text-gray-400">Current Price</div>
+                        <div className="text-2xl font-bold text-white flex items-center">
+                          {priceLoading ? (
+                            <>
+                              <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-white mr-3"></div>
+                              Loading...
+                            </>
+                          ) : stockPrice ? (
+                            stockPrice.price === 'N/A' ? 'Price N/A' : 
+                            stockPrice.price === 'Error' ? 'Price Error' : 
+                            `$${stockPrice.price}`
+                          ) : (
+                            'Loading...'
+                          )}
+                        </div>
+                        {!priceLoading && stockPrice && stockPrice.change !== 'N/A' && stockPrice.change !== 'Error' && (
+                          <div className={`text-sm ${parseFloat(stockPrice.change) >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                            {stockPrice.change >= 0 ? '+' : ''}{stockPrice.change} ({stockPrice.changePercent}%)
+                          </div>
+                        )}
+                      </div>
+                      <div className="text-right">
+                        <div className="text-sm text-gray-400">Last Updated</div>
+                        <div className="text-sm text-gray-300">
+                          {new Date().toLocaleTimeString()}
+                        </div>
+                      </div>
                     </div>
                   </div>
                 </div>
