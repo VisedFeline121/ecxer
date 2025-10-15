@@ -1,7 +1,7 @@
 'use client';
 
 import { MessageCircle, TrendingDown, TrendingUp, Users } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 interface StockData {
   symbol: string;
@@ -24,13 +24,66 @@ export default function Home() {
   const [selectedStock, setSelectedStock] = useState<StockData | null>(null);
   const [loading, setLoading] = useState(true);
   const [lastUpdated, setLastUpdated] = useState<number>(0);
+  const [chartType, setChartType] = useState<'area' | 'candles'>('area');
+  const widgetRef = useRef<any>(null);
 
   useEffect(() => {
     fetchStocks();
     // Refresh every 5 minutes
     const interval = setInterval(fetchStocks, 5 * 60 * 1000);
     return () => clearInterval(interval);
-  }, [selectedStock]);
+  }, []);
+
+  // Load TradingView script
+  useEffect(() => {
+    const script = document.createElement('script');
+    script.src = 'https://s3.tradingview.com/tv.js';
+    script.async = true;
+    script.onload = () => {
+      // Script loaded, charts will be initialized when selectedStock changes
+    };
+    document.head.appendChild(script);
+
+    return () => {
+      // Cleanup script on unmount
+      const existingScript = document.querySelector('script[src="https://s3.tradingview.com/tv.js"]');
+      if (existingScript) {
+        document.head.removeChild(existingScript);
+      }
+    };
+  }, []);
+
+  // Initialize TradingView chart when selectedStock changes
+  useEffect(() => {
+    if (selectedStock && (window as any).TradingView) {
+      const containerId = `tradingview_${selectedStock.symbol}`;
+      
+      // Remove existing widget if it exists
+      if (widgetRef.current) {
+        widgetRef.current.remove();
+        widgetRef.current = null;
+      }
+
+      // Create new widget
+      widgetRef.current = new (window as any).TradingView.widget({
+        container_id: containerId,
+        width: '100%',
+        height: 400,
+        symbol: `NASDAQ:${selectedStock.symbol}`,
+        interval: 'D',
+        timezone: 'Etc/UTC',
+        theme: 'dark',
+        style: chartType === 'area' ? 3 : 1, // 3 for area, 1 for candlesticks
+        locale: 'en',
+        enable_publishing: false,
+        allow_symbol_change: true,
+        hide_top_toolbar: false,
+        hide_side_toolbar: true,
+        details: false,
+        studies: [],
+      });
+    }
+  }, [selectedStock, chartType]);
 
   const fetchStocks = async () => {
     try {
@@ -153,6 +206,41 @@ export default function Home() {
                   </div>
                 </div>
 
+                {/* Stock Price Chart */}
+                <div className="mb-6">
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-lg font-semibold">Price Chart</h3>
+                    <div className="flex space-x-2">
+                      <button 
+                        onClick={() => setChartType('area')}
+                        className={`px-3 py-1 text-xs rounded ${
+                          chartType === 'area' 
+                            ? 'bg-blue-600 text-white' 
+                            : 'bg-gray-600 text-gray-300 hover:bg-gray-500'
+                        }`}
+                      >
+                        Area
+                      </button>
+                      <button 
+                        onClick={() => setChartType('candles')}
+                        className={`px-3 py-1 text-xs rounded ${
+                          chartType === 'candles' 
+                            ? 'bg-blue-600 text-white' 
+                            : 'bg-gray-600 text-gray-300 hover:bg-gray-500'
+                        }`}
+                      >
+                        Candles
+                      </button>
+                    </div>
+                  </div>
+                  <div className="bg-gray-700 rounded-lg p-4">
+                    <div 
+                      id={`tradingview_${selectedStock.symbol}`}
+                      className="w-full h-96"
+                    />
+                  </div>
+                </div>
+
                 <div className="grid grid-cols-3 gap-4 mb-6">
                   <div className="bg-gray-700 rounded-lg p-4 text-center">
                     <div className="text-2xl font-bold text-blue-400">{selectedStock.mentions}</div>
@@ -172,9 +260,15 @@ export default function Home() {
                   <h3 className="text-lg font-semibold mb-4">Recent Discussions</h3>
                   <div className="space-y-3">
                     {selectedStock.posts.slice(0, 10).map((post, index) => (
-                      <div key={index} className="bg-gray-700 rounded-lg p-4">
+                      <a 
+                        key={index} 
+                        href={`https://www.reddit.com${post.permalink}`}
+            target="_blank"
+            rel="noopener noreferrer"
+                        className="block bg-gray-700 rounded-lg p-4 hover:bg-gray-600 transition-colors cursor-pointer"
+                      >
                         <div className="flex items-start justify-between mb-2">
-                          <h4 className="font-medium text-sm line-clamp-2">{post.title}</h4>
+                          <h4 className="font-medium text-sm line-clamp-2 text-white hover:text-blue-300 transition-colors">{post.title}</h4>
                           <span className="text-xs text-gray-400 ml-2 flex-shrink-0">
                             {post.score} ↑
                           </span>
@@ -183,7 +277,7 @@ export default function Home() {
                           <span>r/{post.subreddit}</span>
                           <span>u/{post.author}</span>
                         </div>
-                      </div>
+                      </a>
                     ))}
                   </div>
                 </div>
