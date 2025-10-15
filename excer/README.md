@@ -1,36 +1,67 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# excer - Penny Stock Sentiment Tracker
+
+A real-time dashboard that tracks the most discussed penny stocks on Reddit, analyzing sentiment and trending discussions to help identify potential investment opportunities.
+
+## Features
+
+- **Real-time Reddit Data**: Monitors r/pennystocks, r/wallstreetbets, r/10xPennyStocks, and r/SmallStreetBets
+- **Stock Symbol Detection**: Automatically identifies stock symbols in posts and comments
+- **Sentiment Analysis**: Analyzes positive/negative sentiment using keyword matching
+- **Trending Calculation**: Ranks stocks by discussion volume and sentiment score
+- **Live Dashboard**: Clean, modern interface showing trending stocks and recent discussions
+
+## Tech Stack
+
+- **Frontend**: Next.js 15, TypeScript, Tailwind CSS
+- **Data Collection**: Reddit API (public JSON endpoints)
+- **Background Processing**: Node.js worker with cron scheduling
+- **Deployment**: Vercel (ready for deployment)
 
 ## Getting Started
 
-First, run the development server:
+1. **Install dependencies**:
+   ```bash
+   npm install
+   ```
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+2. **Set up environment variables**:
+   Create `.env.local` with your Reddit API credentials:
+   ```bash
+   REDDIT_CLIENT_ID=your_client_id
+   REDDIT_CLIENT_SECRET=your_client_secret
+   REDDIT_USERNAME=your_reddit_username
+   REDDIT_PASSWORD=your_reddit_password
+   WORKER_SECRET=your_random_secret_key
+   ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+3. **Run the development server**:
+   ```bash
+   npm run dev
+   ```
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+4. **Set up the worker** (optional):
+   ```bash
+   # Manual worker run
+   curl -X GET http://localhost:3000/api/worker
+   
+   # Or set up automatic scheduling (see WORKER_SETUP.md)
+   ```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Open [http://localhost:3000](http://localhost:3000) to view the dashboard.
 
-## Learn More
+## API Endpoints
 
-To learn more about Next.js, take a look at the following resources:
+- `GET /api/reddit` - Returns cached stock data
+- `POST /api/worker` - Triggers data collection worker
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Deployment
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+The app is ready for deployment on Vercel. The `vercel.json` file includes cron job configuration for automatic data updates.
 
-## Deploy on Vercel
+## Disclaimer
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+This tool is for research and entertainment purposes only. It is not financial advice. Always do your own research before making investment decisions.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## License
+
+MIT
