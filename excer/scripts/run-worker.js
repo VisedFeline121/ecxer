@@ -10,11 +10,11 @@ async function runWorker() {
     console.log(`Running worker at ${new Date().toISOString()}`);
     
     const response = await fetch(WORKER_URL, {
-      method: 'POST',
-      headers: {
+      method: WORKER_SECRET ? 'POST' : 'GET',
+      headers: WORKER_SECRET ? {
         'Authorization': `Bearer ${WORKER_SECRET}`,
         'Content-Type': 'application/json'
-      }
+      } : {}
     });
     
     if (response.ok) {
