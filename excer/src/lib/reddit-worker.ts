@@ -25,6 +25,7 @@ const NEGATIVE_KEYWORDS = [
 ];
 
 interface RedditPost {
+  id: string;
   title: string;
   selftext: string;
   score: number;
@@ -72,6 +73,7 @@ class RedditWorker {
       });
 
       const posts = response.data.data.children.map((child: { data: any }) => ({
+        id: child.data.id,
         title: child.data.title,
         selftext: child.data.selftext || '',
         score: child.data.score,
@@ -100,8 +102,68 @@ class RedditWorker {
       }
     }
 
+  // Validate stock symbol using TradingView API
+  private async validateStockSymbol(symbol: string): Promise<boolean> {
+    try {
+      // Try multiple exchanges to be more comprehensive
+      const exchanges = ['NASDAQ', 'NYSE', 'AMEX', 'OTC'];
+      
+      for (const exchange of exchanges) {
+        try {
+          const response = await axios.get(
+            `https://symbol-search.tradingview.com/symbol_search/?text=${symbol}&exchange=${exchange}`,
+            {
+              headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+              },
+              timeout: 3000
+            }
+          );
+          
+          // Check if we get valid results
+          if (response.data && response.data.length > 0) {
+            // Additional check: make sure the symbol matches exactly
+            const exactMatch = response.data.some((item: any) => 
+              item.symbol === symbol || 
+              item.symbol === `$${symbol}` ||
+              item.symbol === `${symbol}:${exchange}`
+            );
+            
+            if (exactMatch) {
+              console.log(`Symbol ${symbol} validated on ${exchange}`);
+              return true;
+            }
+          }
+        } catch (exchangeError) {
+          // Continue to next exchange
+          continue;
+        }
+      }
+      
+      console.log(`Symbol ${symbol} NOT found on any major exchange`);
+      return false;
+    } catch (error) {
+      console.log(`Symbol validation failed for ${symbol}, assuming invalid:`, error.message);
+      // If API fails, assume invalid to be more conservative
+      return false;
+    }
+  }
+
+  // Deduplicate posts by ID
+  private deduplicatePosts(posts: RedditPost[]): RedditPost[] {
+    const seen = new Set<string>();
+    return posts.filter(post => {
+      if (seen.has(post.id)) {
+        console.log(`Removing duplicate post: ${post.title} (ID: ${post.id})`);
+        return false;
+      }
+      seen.add(post.id);
+      return true;
+    });
+  }
+
   // Process posts for stock mentions and sentiment
-  private processPostsForStocks(posts: RedditPost[]): { [key: string]: StockData } {
+  private async processPostsForStocks(posts: RedditPost[]): Promise<{ [key: string]: StockData }> {
     const stockData: { [key: string]: StockData } = {};
     let totalMatches = 0;
 
@@ -127,15 +189,19 @@ class RedditWorker {
         console.log(`Found potential stock symbols in post: "${post.title}" - matches:`, allMatches);
         totalMatches += allMatches.length;
         
-        allMatches.forEach(match => {
+        // Process symbols with validation
+        for (const match of allMatches) {
           const symbol = match.replace(/^\$/, '').toUpperCase();
           
           // Skip common false positives and very short/long symbols
           if (symbol.length < 2 || symbol.length > 5 || 
-              ['THE', 'AND', 'FOR', 'ARE', 'BUT', 'NOT', 'YOU', 'ALL', 'CAN', 'HER', 'WAS', 'ONE', 'OUR', 'HAD', 'WHAT', 'WERE', 'WHEN', 'YOUR', 'HOW', 'SAID', 'EACH', 'WHICH', 'THEIR', 'TIME', 'WILL', 'ABOUT', 'IF', 'UP', 'OUT', 'MANY', 'THEN', 'THEM', 'THESE', 'SO', 'SOME', 'WOULD', 'MAKE', 'LIKE', 'INTO', 'HIM', 'HAS', 'MORE', 'GO', 'NO', 'WAY', 'COULD', 'MY', 'THAN', 'FIRST', 'BEEN', 'CALL', 'WHO', 'ITS', 'NOW', 'FIND', 'LONG', 'DOWN', 'DAY', 'DID', 'GET', 'COME', 'MADE', 'MAY', 'PART', 'NEW', 'WORK', 'USE', 'MAN', 'FIND', 'GIVE', 'JUST', 'WHERE', 'MOST', 'GOOD', 'MUCH', 'SOME', 'TIME', 'VERY', 'WHEN', 'COME', 'HERE', 'JUST', 'LIKE', 'LONG', 'MAKE', 'MANY', 'OVER', 'SUCH', 'TAKE', 'THAN', 'THEM', 'WELL', 'WERE'].includes(symbol)) {
+              ['THE', 'AND', 'FOR', 'ARE', 'BUT', 'NOT', 'YOU', 'ALL', 'CAN', 'HER', 'WAS', 'ONE', 'OUR', 'HAD', 'WHAT', 'WERE', 'WHEN', 'YOUR', 'HOW', 'SAID', 'EACH', 'WHICH', 'THEIR', 'TIME', 'WILL', 'ABOUT', 'IF', 'UP', 'OUT', 'MANY', 'THEN', 'THEM', 'THESE', 'SO', 'SOME', 'WOULD', 'MAKE', 'LIKE', 'INTO', 'HIM', 'HAS', 'MORE', 'GO', 'NO', 'WAY', 'COULD', 'MY', 'THAN', 'FIRST', 'BEEN', 'CALL', 'WHO', 'ITS', 'NOW', 'FIND', 'LONG', 'DOWN', 'DAY', 'DID', 'GET', 'COME', 'MADE', 'MAY', 'PART', 'NEW', 'WORK', 'USE', 'MAN', 'FIND', 'GIVE', 'JUST', 'WHERE', 'MOST', 'GOOD', 'MUCH', 'SOME', 'TIME', 'VERY', 'WHEN', 'COME', 'HERE', 'JUST', 'LIKE', 'LONG', 'MAKE', 'MANY', 'OVER', 'SUCH', 'TAKE', 'THAN', 'THEM', 'WELL', 'WERE', 'AI', 'DD'].includes(symbol)) {
             console.log(`Skipping symbol: ${symbol} (false positive)`);
-            return;
+            continue;
           }
+          
+          // Skip validation for now to avoid API rate limits
+          // TODO: Implement post-processing validation
           
           console.log(`Processing stock symbol: ${symbol}`);
           
@@ -163,7 +229,7 @@ class RedditWorker {
           } else if (negativeCount > positiveCount) {
             stockData[symbol].negativeMentions++;
           }
-        });
+        }
       }
     });
 
@@ -209,7 +275,7 @@ class RedditWorker {
       for (const subreddit of SUBREDDITS) {
         console.log(`Fetching from r/${subreddit}...`);
         const posts = await this.fetchSubredditPosts(subreddit);
-        const stockData = this.processPostsForStocks(posts);
+        const stockData = await this.processPostsForStocks(posts);
         
         // Merge stock data
         Object.keys(stockData).forEach(symbol => {
@@ -217,7 +283,10 @@ class RedditWorker {
             allStockData[symbol].mentions += stockData[symbol].mentions;
             allStockData[symbol].positiveMentions += stockData[symbol].positiveMentions;
             allStockData[symbol].negativeMentions += stockData[symbol].negativeMentions;
-            allStockData[symbol].posts.push(...stockData[symbol].posts);
+            
+            // Merge posts and deduplicate by ID
+            const combinedPosts = [...allStockData[symbol].posts, ...stockData[symbol].posts];
+            allStockData[symbol].posts = this.deduplicatePosts(combinedPosts);
           } else {
             allStockData[symbol] = stockData[symbol];
           }
@@ -227,6 +296,21 @@ class RedditWorker {
         await new Promise(resolve => setTimeout(resolve, 1000));
       }
       
+      // Final deduplication pass for all stocks
+      Object.keys(allStockData).forEach(symbol => {
+        allStockData[symbol].posts = this.deduplicatePosts(allStockData[symbol].posts);
+        console.log(`Final deduplication for ${symbol}: ${allStockData[symbol].posts.length} unique posts`);
+      });
+
+      // Remove known invalid symbols that TradingView doesn't recognize
+      const invalidSymbols = ['US', 'UK', 'EU', 'CA', 'DE', 'FR', 'IT', 'ES', 'NL', 'SE', 'NO', 'DK', 'FI', 'CH', 'AT', 'BE', 'IE', 'PT', 'GR', 'PL', 'CZ', 'HU', 'SK', 'SI', 'HR', 'BG', 'RO', 'LT', 'LV', 'EE', 'CY', 'MT', 'LU'];
+      invalidSymbols.forEach(symbol => {
+        if (allStockData[symbol]) {
+          console.log(`Removing invalid symbol: ${symbol}`);
+          delete allStockData[symbol];
+        }
+      });
+
       // Calculate sentiment scores and sort by trending
       const stocks = Object.values(allStockData)
         .filter(stock => stock.mentions >= 2) // Only include stocks with 2+ mentions
