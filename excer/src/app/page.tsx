@@ -6,6 +6,7 @@ import { useEffect, useRef, useState } from 'react';
 interface StockData {
   symbol: string;
   mentions: number;
+  uniquePosts: number;
   positiveMentions: number;
   negativeMentions: number;
   sentimentScore: number;
@@ -246,7 +247,7 @@ export default function Home() {
                     <div className="flex items-center justify-between text-sm text-gray-300">
                       <span className="flex items-center">
                         <MessageCircle className="w-4 h-4 mr-1" />
-                        {stock.mentions} mentions
+                        {stock.uniquePosts} posts
                       </span>
                       <span className="flex items-center">
                         <Users className="w-4 h-4 mr-1" />
@@ -348,8 +349,8 @@ export default function Home() {
 
                 <div className="grid grid-cols-3 gap-4 mb-6">
                   <div className="bg-gray-700 rounded-lg p-4 text-center">
-                    <div className="text-2xl font-bold text-blue-400">{selectedStock.mentions}</div>
-                    <div className="text-sm text-gray-400">Total Mentions</div>
+                    <div className="text-2xl font-bold text-blue-400">{selectedStock.uniquePosts}</div>
+                    <div className="text-sm text-gray-400">Unique Posts</div>
                   </div>
                   <div className="bg-gray-700 rounded-lg p-4 text-center">
                     <div className="text-2xl font-bold text-green-400">{selectedStock.positiveMentions}</div>

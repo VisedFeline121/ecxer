@@ -24,6 +24,14 @@ const NEGATIVE_KEYWORDS = [
   'loss', 'bag', 'pump and dump', 'manipulation'
 ];
 
+interface RedditComment {
+  id: string;
+  body: string;
+  score: number;
+  created_utc: number;
+  author: string;
+}
+
 interface RedditPost {
   id: string;
   title: string;
@@ -33,14 +41,28 @@ interface RedditPost {
   subreddit: string;
   permalink: string;
   author: string;
+  comments: RedditComment[];
+}
+
+interface UserSentiment {
+  userId: string;        // Reddit username
+  sentiment: 'positive' | 'negative' | 'neutral';
+  timestamp: number;     // When they expressed this sentiment
+  score: number;         // Post/comment score (indicates community agreement)
+  source: {             // Where this sentiment came from
+    type: 'post' | 'comment';
+    id: string;         // Post/comment ID
+    text: string;       // The actual content
+  };
 }
 
 interface StockData {
   symbol: string;
   mentions: number;
-  positiveMentions: number;
-  negativeMentions: number;
-  sentimentScore: number;
+  uniquePosts: number;
+  uniqueUsers: number;
+  userSentiments: UserSentiment[];
+  sentimentScore: number;  // Calculated from userSentiments
   posts: RedditPost[];
   lastUpdated: number;
 }
@@ -60,47 +82,160 @@ class RedditWorker {
   }
 
   // Fetch posts from a subreddit
+  private async fetchComments(permalink: string, postTitle: string): Promise<RedditComment[]> {
+    try {
+      // Add a small delay to avoid rate limiting
+      await new Promise(resolve => setTimeout(resolve, 1000));
+
+      const response = await this.fetchWithRetry(`https://www.reddit.com${permalink}.json`);
+
+      // Reddit returns an array with post data and comments data
+      const commentsData = response.data[1].data.children;
+      
+      // Get top 3 comments that mention the stock
+      const stockSymbol = postTitle.toUpperCase().match(/\$?([A-Z]{2,5})\b/)?.[1];
+      const comments: RedditComment[] = commentsData
+        .filter((child: { kind: string, data: any }) => {
+          // Must be a comment (not a "more comments" link)
+          if (child.kind !== 't1') return false;
+          
+          // Must have positive score
+          if (child.data.score <= 0) return false;
+          
+          // Must mention the stock symbol
+          const commentText = child.data.body.toUpperCase();
+          return stockSymbol && (
+            commentText.includes(`$${stockSymbol}`) ||
+            commentText.includes(` ${stockSymbol} `) ||
+            commentText.includes(`${stockSymbol},`) ||
+            commentText.includes(`${stockSymbol}.`) ||
+            commentText.includes(`${stockSymbol}!`) ||
+            commentText.includes(`${stockSymbol}?`)
+          );
+        })
+        .map((child: { data: any }) => ({
+          id: child.data.id,
+          body: child.data.body || '',
+          score: child.data.score,
+          created_utc: child.data.created_utc,
+          author: child.data.author
+        }))
+        // Sort by score and take top 3 relevant comments
+        .sort((a, b) => b.score - a.score)
+        .slice(0, 3);
+
+      console.log(`Found ${comments.length} comments for post`);
+      return comments;
+    } catch (error) {
+      console.error(`Error fetching comments:`, error);
+      return [];
+    }
+  }
+
+  private async fetchWithRetry(url: string, retries = 5, delay = 10000): Promise<any> {
+    for (let i = 0; i < retries; i++) {
+      try {
+        const response = await axios.get(url, {
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+          },
+          timeout: 15000
+        });
+        return response;
+      } catch (error) {
+        if (error.response?.status === 429) {
+          console.log(`Rate limited, waiting ${delay/1000} seconds before retry ${i + 1}/${retries}...`);
+          await new Promise(resolve => setTimeout(resolve, delay));
+          // Increase delay for next retry
+          delay *= 2;
+          continue;
+        }
+        throw error;
+      }
+    }
+    throw new Error(`Failed after ${retries} retries`);
+  }
+
   private async fetchSubredditPosts(subreddit: string): Promise<RedditPost[]> {
     try {
       console.log(`Fetching posts from r/${subreddit}...`);
       
-      // Use Reddit's public JSON API
-      const response = await axios.get(`https://www.reddit.com/r/${subreddit}/new.json?limit=100`, {
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-        },
-        timeout: 15000
+      // Use Reddit's public JSON API with retry mechanism
+      // Get both new and top posts from last week
+      const response = await this.fetchWithRetry(`https://www.reddit.com/r/${subreddit}/new.json?limit=50`);
+      await new Promise(resolve => setTimeout(resolve, 2000)); // Wait 2s between requests
+      const topResponse = await this.fetchWithRetry(`https://www.reddit.com/r/${subreddit}/top.json?limit=50&t=week`);
+
+      // Combine and deduplicate posts from both sources
+      const allChildren = [
+        ...response.data.data.children,
+        ...topResponse.data.data.children
+      ];
+      
+      // Remove duplicate posts by ID
+      const seenIds = new Set<string>();
+      const uniqueChildren = allChildren.filter(child => {
+        if (seenIds.has(child.data.id)) return false;
+        seenIds.add(child.data.id);
+        return true;
       });
 
-      const posts = response.data.data.children.map((child: { data: any }) => ({
-        id: child.data.id,
-        title: child.data.title,
-        selftext: child.data.selftext || '',
-        score: child.data.score,
-        created_utc: child.data.created_utc,
-        subreddit: child.data.subreddit,
-        permalink: child.data.permalink,
-        author: child.data.author
+      console.log(`Found ${uniqueChildren.length} unique posts from ${allChildren.length} total in r/${subreddit}`);
+
+      const posts = await Promise.all(uniqueChildren.map(async (child: { data: any }) => {
+        const post = {
+          id: child.data.id,
+          title: child.data.title,
+          selftext: child.data.selftext || '',
+          score: child.data.score,
+          created_utc: child.data.created_utc,
+          subreddit: child.data.subreddit,
+          permalink: child.data.permalink,
+          author: child.data.author,
+          comments: [] as RedditComment[]
+        };
+
+        // Only process high-quality stock mentions in title
+        const title = post.title.toUpperCase();
+        
+        // Post must have decent engagement
+        const hasEngagement = child.data.score >= 10;
+        
+        // Look for explicit stock mentions in title
+        const hasStockSymbol = (
+          // $TICK format (most reliable)
+          title.match(/\$[A-Z]{2,5}\b/) ||
+          // "TICK stock/share" format
+          title.match(/\b[A-Z]{2,5}\s+(?:STOCK|SHARE|TICKER)S?\b/) ||
+          // "stock/share TICK" format
+          title.match(/\b(?:STOCK|SHARE|TICKER)S?\s+[A-Z]{2,5}\b/)
+        ) && hasEngagement; // Must have minimum score
+        
+        if (hasStockSymbol) {
+          post.comments = await this.fetchComments(post.permalink, post.title);
+        }
+
+        return post;
       }));
 
-      console.log(`Found ${posts.length} posts in r/${subreddit}`);
+      console.log(`Found ${posts.length} posts in r/${subreddit} (${uniqueChildren.length} unique from ${allChildren.length} total)`);
       if (posts.length > 0) {
         console.log(`Sample post titles:`, posts.slice(0, 3).map(p => p.title));
       }
       
       return posts;
-      } catch (error) {
-        console.error(`Error fetching from r/${subreddit}:`, error);
-        if (error.response) {
-          console.error(`Response status: ${error.response.status}`);
-          console.error(`Response data:`, error.response.data);
-        }
-        return [];
-      } finally {
-        // Add a delay between requests to avoid rate limiting
-        await new Promise(resolve => setTimeout(resolve, 2000));
+    } catch (error) {
+      console.error(`Error fetching from r/${subreddit}:`, error);
+      if (error.response) {
+        console.error(`Response status: ${error.response.status}`);
+        console.error(`Response data:`, error.response.data);
       }
-    }
+      return [];
+      } finally {
+        // Add a longer delay between subreddits to avoid rate limiting
+        await new Promise(resolve => setTimeout(resolve, 30000));
+      }
+  }
 
   // Validate stock symbol using TradingView API
   private async validateStockSymbol(symbol: string): Promise<boolean> {
@@ -167,23 +302,22 @@ class RedditWorker {
     const stockData: { [key: string]: StockData } = {};
     let totalMatches = 0;
 
-    posts.forEach((post: RedditPost) => {
-      // Look for stock symbols in both original and lowercase text
-      const originalText = `${post.title} ${post.selftext}`;
-      const text = originalText.toLowerCase();
-      
-      // Find potential stock symbols
-      const matches = originalText.match(STOCK_SYMBOL_REGEX) || [];
-      
-      // Also look for common stock mention patterns
-      const tickerMatches = text.match(/\$[a-z]{2,5}\b/g) || [];  // $ticker
-      const tickerWordMatches = text.match(/\b(?:ticker|stock|share)s?\s+([a-z]{2,5})\b/gi) || []; // "ticker ABC"
-      
-      const allMatches = [
-        ...matches,
-        ...tickerMatches.map(m => m.toUpperCase()),
-        ...tickerWordMatches.map(m => m.split(/\s+/).pop()?.toUpperCase() || '')
-      ].filter(Boolean);
+      posts.forEach((post: RedditPost) => {
+        // Only look for stock symbols in the title
+        const title = post.title;
+        
+        // Find potential stock symbols in title
+        const matches = title.match(STOCK_SYMBOL_REGEX) || [];
+        
+        // Also look for common stock mention patterns in title
+        const tickerMatches = title.toLowerCase().match(/\$[a-z]{2,5}\b/g) || [];  // $ticker
+        const tickerWordMatches = title.toLowerCase().match(/\b(?:ticker|stock|share)s?\s+([a-z]{2,5})\b/gi) || []; // "ticker ABC"
+        
+        const allMatches = [
+          ...matches,
+          ...tickerMatches.map(m => m.toUpperCase()),
+          ...tickerWordMatches.map(m => m.split(/\s+/).pop()?.toUpperCase() || '')
+        ].filter(Boolean);
       
       if (allMatches.length > 0) {
         console.log(`Found potential stock symbols in post: "${post.title}" - matches:`, allMatches);
@@ -194,8 +328,63 @@ class RedditWorker {
           const symbol = match.replace(/^\$/, '').toUpperCase();
           
           // Skip common false positives and very short/long symbols
-          if (symbol.length < 2 || symbol.length > 5 || 
-              ['THE', 'AND', 'FOR', 'ARE', 'BUT', 'NOT', 'YOU', 'ALL', 'CAN', 'HER', 'WAS', 'ONE', 'OUR', 'HAD', 'WHAT', 'WERE', 'WHEN', 'YOUR', 'HOW', 'SAID', 'EACH', 'WHICH', 'THEIR', 'TIME', 'WILL', 'ABOUT', 'IF', 'UP', 'OUT', 'MANY', 'THEN', 'THEM', 'THESE', 'SO', 'SOME', 'WOULD', 'MAKE', 'LIKE', 'INTO', 'HIM', 'HAS', 'MORE', 'GO', 'NO', 'WAY', 'COULD', 'MY', 'THAN', 'FIRST', 'BEEN', 'CALL', 'WHO', 'ITS', 'NOW', 'FIND', 'LONG', 'DOWN', 'DAY', 'DID', 'GET', 'COME', 'MADE', 'MAY', 'PART', 'NEW', 'WORK', 'USE', 'MAN', 'FIND', 'GIVE', 'JUST', 'WHERE', 'MOST', 'GOOD', 'MUCH', 'SOME', 'TIME', 'VERY', 'WHEN', 'COME', 'HERE', 'JUST', 'LIKE', 'LONG', 'MAKE', 'MANY', 'OVER', 'SUCH', 'TAKE', 'THAN', 'THEM', 'WELL', 'WERE', 'AI', 'DD'].includes(symbol)) {
+          const FALSE_POSITIVES = [
+            // Common English words (2-5 letters)
+            'THE', 'AND', 'FOR', 'ARE', 'BUT', 'NOT', 'YOU', 'ALL', 'CAN', 'HER', 'WAS', 'ONE', 'OUR', 'HAD', 'WHAT', 'WERE', 'WHEN', 'YOUR', 'HOW', 'SAID', 'EACH', 'WHICH', 'THEIR', 'TIME', 'WILL', 'ABOUT', 'IF', 'UP', 'OUT', 'MANY', 'THEN', 'THEM', 'THESE', 'SO', 'SOME', 'WOULD', 'MAKE', 'LIKE', 'INTO', 'HIM', 'HAS', 'MORE', 'GO', 'NO', 'WAY', 'COULD', 'MY', 'THAN', 'FIRST', 'BEEN', 'CALL', 'WHO', 'ITS', 'NOW', 'FIND', 'LONG', 'DOWN', 'DAY', 'DID', 'GET', 'COME', 'MADE', 'MAY', 'PART', 'NEW', 'WORK', 'USE', 'MAN', 'FIND', 'GIVE', 'JUST', 'WHERE', 'MOST', 'GOOD', 'MUCH', 'SOME', 'TIME', 'VERY', 'WHEN', 'COME', 'HERE', 'JUST', 'LIKE', 'LONG', 'MAKE', 'MANY', 'OVER', 'SUCH', 'TAKE', 'THAN', 'THEM', 'WELL', 'WERE',
+            // Business/Finance Terms
+            'CEO', 'CFO', 'COO', 'CTO', 'CMO', 'CRO', 'CCO', 'CDO', 'CIO', 'CLO', 'CPO',
+            'IPO', 'ICO', 'SPO', 'APO', 'ETF', 'REIT', 'SPAC',
+            'EPS', 'P2E', 'PEG', 'ROI', 'ROE', 'ROA', 'IRR', 'NPV', 'DCF',
+            'SEC', 'FDA', 'EPA', 'DOJ', 'FTC', 'IRS', 'IMF', 'FED',
+            'AI', 'ML', 'AR', 'VR', 'IoT', 'SaaS', 'PaaS', 'IaaS',
+            'DD', 'TA', 'FA', 'SI', 'DCA', 'FOMO', 'FUD', 'ASDAQ', 'PRICE',
+            // Tech/Business Common Words
+              'API', 'SDK', 'UI', 'UX', 'QA', 'PM', 'HR', 'PR', 'IT', 'IS', 'TO', 'YOLO', 'TLDR',
+              // Common Business Terms
+              'INC', 'LLC', 'LTD', 'CORP', 'CO', 'HOLDINGS', 'GROUP', 'INTL', 'TECH', 'GAAP',
+              'YTD', 'EOD', 'ROW', 'QTD', 'MTD', 'FY', 'CY', 'EST', 'PDT', 'GMT',
+              'PURE', 'WORTH', 'HAVE', 'WITH', 'INESS', 'HIVE', 'NEXT', 'LAST', 'BEST',
+              'FREE', 'PAID', 'CALL', 'PUT', 'BID', 'ASK', 'NET', 'GROSS', 'TOTAL',
+            // Common Prepositions/Articles/Conjunctions
+            'IN', 'ON', 'AT', 'BY', 'OF', 'OR', 'AN', 'AS', 'BE', 'DO', 'IF', 'SO', 'UP', 'VS',
+            // Common Verbs
+            'AM', 'IS', 'ARE', 'WAS', 'WERE', 'BE', 'BEEN', 'GO', 'GOES', 'WENT',
+            'DO', 'DOES', 'DID', 'DONE', 'SEE', 'SEEN', 'SAW', 'GET', 'GOT',
+            // Common Adjectives
+            'BIG', 'BAD', 'LOW', 'HIGH', 'HOT', 'COLD', 'FAST', 'SLOW', 'GOOD',
+            // Common Pronouns
+            'HE', 'SHE', 'IT', 'WE', 'YOU', 'THEY', 'WHO', 'WHAT', 'THIS', 'THAT',
+            // Additional Common Words (3-4 letters)
+            'CAT', 'DOG', 'CAR', 'BUS', 'TRAIN', 'PLANE', 'SHIP', 'BOAT', 'BIKE',
+            'HOME', 'HOUSE', 'ROOM', 'DOOR', 'WINDOW', 'TABLE', 'CHAIR', 'BED',
+            'FOOD', 'WATER', 'MILK', 'BREAD', 'MEAT', 'FISH', 'CHICKEN',
+            'BOOK', 'PEN', 'PAPER', 'PHONE', 'COMPUTER', 'LAPTOP', 'TV',
+            'MONEY', 'CASH', 'CARD', 'BANK', 'SHOP', 'STORE', 'MALL',
+            'GAME', 'PLAY', 'FUN', 'HAPPY', 'SAD', 'MAD', 'TIRED', 'SICK',
+            'FRIEND', 'FAMILY', 'MOTHER', 'FATHER', 'BROTHER', 'SISTER',
+            'SCHOOL', 'TEACHER', 'STUDENT', 'CLASS', 'TEST', 'EXAM',
+            'JOB', 'WORK', 'BOSS', 'EMPLOYEE', 'OFFICE', 'MEETING',
+            'HEALTH', 'DOCTOR', 'HOSPITAL', 'MEDICINE', 'PILL',
+            'SPORT', 'FOOTBALL', 'BASKETBALL', 'TENNIS', 'GOLF',
+            'MUSIC', 'SONG', 'MOVIE', 'FILM', 'SHOW', 'PARTY',
+            'TRAVEL', 'VACATION', 'HOTEL', 'RESTAURANT', 'COFFEE',
+            'WEATHER', 'SUN', 'RAIN', 'SNOW', 'WIND', 'CLOUD',
+            'COLOR', 'RED', 'BLUE', 'GREEN', 'YELLOW', 'BLACK', 'WHITE',
+            'NUMBER', 'ONE', 'TWO', 'THREE', 'FOUR', 'FIVE', 'SIX', 'SEVEN', 'EIGHT', 'NINE', 'TEN',
+            // Common Abbreviations
+            'USA', 'UK', 'EU', 'UN', 'NATO', 'WHO', 'UNESCO', 'NASA', 'FBI', 'CIA',
+            'TV', 'PC', 'CD', 'DVD', 'USB', 'GPS', 'WiFi', 'HTML', 'CSS', 'JS',
+            'AM', 'PM', 'AD', 'BC', 'ETC', 'EG', 'IE', 'VS', 'AKA', 'FYI',
+            // Common Acronyms
+            'OK', 'OKAY', 'YES', 'NO', 'YES', 'NO', 'OK', 'OKAY',
+            'LOL', 'OMG', 'WTF', 'BTW', 'FYI', 'ASAP', 'RSVP', 'VIP', 'USD',
+            // Common Contractions and Short Forms
+            'DONT', 'WONT', 'CANT', 'SHOULDNT', 'WOULDNT', 'COULDNT',
+            'IM', 'YOURE', 'HES', 'SHES', 'ITS', 'WERE', 'THEYRE',
+            'IVE', 'YOUVE', 'WEVE', 'THEYVE', 'HASNT', 'HAVENT'
+          ];
+          
+          if (symbol.length < 2 || symbol.length > 5 || FALSE_POSITIVES.includes(symbol)) {
             console.log(`Skipping symbol: ${symbol} (false positive)`);
             continue;
           }
@@ -209,8 +398,9 @@ class RedditWorker {
             stockData[symbol] = {
               symbol,
               mentions: 0,
-              positiveMentions: 0,
-              negativeMentions: 0,
+              uniquePosts: 0,
+              uniqueUsers: 0,
+              userSentiments: [],
               sentimentScore: 0,
               posts: [],
               lastUpdated: Date.now()
@@ -220,15 +410,71 @@ class RedditWorker {
           stockData[symbol].mentions++;
           stockData[symbol].posts.push(post);
           
-          // Calculate sentiment
-          const positiveCount = POSITIVE_KEYWORDS.filter(keyword => text.includes(keyword)).length;
-          const negativeCount = NEGATIVE_KEYWORDS.filter(keyword => text.includes(keyword)).length;
+          // Calculate sentiment for text
+          const analyzeText = (text: string) => {
+            const positiveCount = POSITIVE_KEYWORDS.filter(keyword => text.includes(keyword)).length;
+            const negativeCount = NEGATIVE_KEYWORDS.filter(keyword => text.includes(keyword)).length;
+            return {
+              sentiment: positiveCount > negativeCount ? 'positive' : 
+                        negativeCount > positiveCount ? 'negative' : 'neutral',
+              positiveCount,
+              negativeCount
+            };
+          };
+
+          // Analyze post content (title and selftext)
+          const postContent = `${post.title}\n${post.selftext}`.toLowerCase();
+          const postAnalysis = analyzeText(postContent);
           
-          if (positiveCount > negativeCount) {
-            stockData[symbol].positiveMentions++;
-          } else if (negativeCount > positiveCount) {
-            stockData[symbol].negativeMentions++;
-          }
+          // Post sentiment has 2x weight because it's the main content
+          const postSentiment: UserSentiment = {
+            userId: post.author,
+            sentiment: postAnalysis.sentiment,
+            timestamp: post.created_utc,
+            score: post.score * 2, // Double weight for post
+            source: {
+              type: 'post',
+              id: post.id,
+              text: postContent
+            }
+          };
+          
+          // Get top 5 comments by score and analyze their sentiment
+          const commentSentiments: UserSentiment[] = post.comments
+            .sort((a, b) => b.score - a.score) // Sort by score
+            .slice(0, 5) // Take top 5
+            .map(comment => {
+              const commentAnalysis = analyzeText(comment.body.toLowerCase());
+              return {
+                userId: comment.author,
+                sentiment: commentAnalysis.sentiment,
+                timestamp: comment.created_utc,
+                score: comment.score,
+                source: {
+                  type: 'comment',
+                  id: comment.id,
+                  text: comment.body
+                }
+              };
+            });
+
+          // Combine all sentiments
+          stockData[symbol].userSentiments.push(postSentiment, ...commentSentiments);
+          
+          // Update unique users count
+          const uniqueUsers = new Set(stockData[symbol].userSentiments.map(s => s.userId));
+          stockData[symbol].uniqueUsers = uniqueUsers.size;
+          
+          // Calculate weighted sentiment score
+          const weightedSentiments = stockData[symbol].userSentiments.map(s => ({
+            sentiment: s.sentiment === 'positive' ? 1 : s.sentiment === 'negative' ? -1 : 0,
+            weight: Math.log10(Math.max(s.score, 1)) + 1  // Log scale for scores
+          }));
+          
+          const totalWeight = weightedSentiments.reduce((sum, s) => sum + s.weight, 0);
+          stockData[symbol].sentimentScore = totalWeight > 0 
+            ? weightedSentiments.reduce((sum, s) => sum + (s.sentiment * s.weight), 0) / totalWeight
+            : 0;
         }
       }
     });
@@ -287,8 +533,12 @@ class RedditWorker {
             // Merge posts and deduplicate by ID
             const combinedPosts = [...allStockData[symbol].posts, ...stockData[symbol].posts];
             allStockData[symbol].posts = this.deduplicatePosts(combinedPosts);
+            // Update uniquePosts count after deduplication
+            allStockData[symbol].uniquePosts = allStockData[symbol].posts.length;
           } else {
             allStockData[symbol] = stockData[symbol];
+            // Set uniquePosts for new stocks
+            allStockData[symbol].uniquePosts = allStockData[symbol].posts.length;
           }
         });
         
@@ -299,7 +549,8 @@ class RedditWorker {
       // Final deduplication pass for all stocks
       Object.keys(allStockData).forEach(symbol => {
         allStockData[symbol].posts = this.deduplicatePosts(allStockData[symbol].posts);
-        console.log(`Final deduplication for ${symbol}: ${allStockData[symbol].posts.length} unique posts`);
+        allStockData[symbol].uniquePosts = allStockData[symbol].posts.length;
+        console.log(`Final deduplication for ${symbol}: ${allStockData[symbol].uniquePosts} unique posts, ${allStockData[symbol].mentions} total mentions`);
       });
 
       // Remove known invalid symbols that TradingView doesn't recognize
@@ -313,12 +564,35 @@ class RedditWorker {
 
       // Calculate sentiment scores and sort by trending
       const stocks = Object.values(allStockData)
-        .filter(stock => stock.mentions >= 2) // Only include stocks with 2+ mentions
-        .map(stock => ({
-          ...stock,
-          sentimentScore: stock.positiveMentions - stock.negativeMentions,
-          trendingScore: stock.mentions * (stock.positiveMentions - stock.negativeMentions)
-        }))
+        // Include ALL stocks with at least one real post
+        .filter(stock => stock.posts.length > 0)
+        .map(stock => {
+          // Calculate post engagement score
+          const postScore = stock.posts.reduce((sum, p) => sum + Math.max(p.score, 1), 0);
+          const avgScore = postScore / stock.posts.length;
+          
+          // Calculate sentiment
+          const sentimentScore = stock.userSentiments.reduce((sum, s) => {
+            const sentiment = s.sentiment === 'positive' ? 1 : s.sentiment === 'negative' ? -1 : 0;
+            const weight = Math.log10(Math.max(s.score, 1)) + 1;
+            return sum + (sentiment * weight);
+          }, 0);
+          
+          // Calculate trending score components
+          // Heavily weight unique posts and engagement
+          const diversityScore = stock.uniquePosts * 3;        // More weight on unique posts
+          const mentionScore = stock.mentions * 0.5;          // Less weight on raw mentions
+          const engagementScore = Math.log10(avgScore + 1) * 2; // More weight on high-scoring posts
+          const sentimentImpact = Math.abs(sentimentScore);    // Keep sentiment as is
+          
+          const trendingScore = diversityScore + mentionScore + engagementScore + sentimentImpact;
+          
+          return {
+            ...stock,
+            sentimentScore,
+            trendingScore
+          };
+        })
         .sort((a, b) => b.trendingScore - a.trendingScore)
         .slice(0, 20); // Top 20 trending stocks
       
