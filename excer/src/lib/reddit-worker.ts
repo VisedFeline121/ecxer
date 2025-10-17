@@ -502,10 +502,17 @@ class RedditWorker {
   // Load data from file
   public async loadData(): Promise<WorkerData | null> {
     try {
+      console.log('[Worker] Reading data file:', this.dataPath);
       const data = await fs.readFile(this.dataPath, 'utf-8');
-      return JSON.parse(data);
+      const parsed = JSON.parse(data);
+      console.log('[Worker] Successfully loaded data:', {
+        stocksCount: parsed?.stocks?.length || 0,
+        lastUpdated: parsed?.lastUpdated ? new Date(parsed.lastUpdated).toISOString() : 'none',
+        firstStock: parsed?.stocks?.[0]?.symbol || 'none'
+      });
+      return parsed;
     } catch (error) {
-      console.log('No existing data file found');
+      console.log('[Worker] No existing data file found:', error);
       return null;
     }
   }

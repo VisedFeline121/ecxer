@@ -26,6 +26,9 @@ export default function Home() {
   const [selectedStock, setSelectedStock] = useState<StockData | null>(null);
   const [loading, setLoading] = useState(true);
   const [lastUpdated, setLastUpdated] = useState<number>(0);
+  const [nextUpdate, setNextUpdate] = useState<number>(0);
+  const [currentTime, setCurrentTime] = useState<number>(Date.now());
+  const [refreshing, setRefreshing] = useState<boolean>(false);
   const [chartType, setChartType] = useState<'area' | 'candles'>('area');
   const [stockPrice, setStockPrice] = useState<{price: string, change: string, changePercent: string} | null>(null);
   const [priceLoading, setPriceLoading] = useState(false);
@@ -33,8 +36,51 @@ export default function Home() {
 
   useEffect(() => {
     fetchStocks();
-    // Refresh every 5 minutes
-    const interval = setInterval(fetchStocks, 5 * 60 * 1000);
+
+    // Set up SSE connection to get notified when worker updates data
+    let eventSource = new EventSource('/api/updates');
+    
+    eventSource.onmessage = (event) => {
+      console.log('[SSE] Event received:', event.data);
+      const data = JSON.parse(event.data);
+      if (data.type === 'update') {
+        console.log('[Worker] Finished, fetching new data...');
+        fetchStocks(true);
+      } else {
+        console.log('[SSE] Connection established');
+      }
+    };
+
+    eventSource.onerror = (error) => {
+      console.error('SSE connection error:', error);
+      // Try to reconnect after a delay
+      setTimeout(() => {
+        console.log('Attempting to reconnect SSE...');
+        eventSource.close();
+        const newEventSource = new EventSource('/api/updates');
+        eventSource = newEventSource;
+      }, 5000);
+    };
+
+    return () => {
+      eventSource.close();
+    };
+  }, []);
+
+  // Set next update time once when data loads, then just count down
+  useEffect(() => {
+    if (lastUpdated > 0) {
+      const nextUpdateTime = lastUpdated + (15 * 60 * 1000); // 15 minutes from last update
+      setNextUpdate(nextUpdateTime);
+    }
+  }, [lastUpdated]);
+
+  // Simple timer that updates every second
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setCurrentTime(Date.now());
+    }, 1000);
+    
     return () => clearInterval(interval);
   }, []);
 
@@ -154,19 +200,44 @@ export default function Home() {
     }
   };
 
-  const fetchStocks = async () => {
+  const fetchStocks = async (isAutoRefresh = false) => {
     try {
-      const response = await fetch('/api/reddit');
+      if (isAutoRefresh) {
+        console.log('[Refresh] Starting auto-refresh...');
+        setRefreshing(true);
+      }
+      // Add cache-busting parameter to prevent caching
+      console.log('[API] Fetching data...');
+      const response = await fetch('/api/reddit?_=' + Date.now());
       const data = await response.json();
-      setStocks(data.stocks || []);
+      console.log('[API] Received data:', {
+        stocksCount: data.stocks?.length || 0,
+        lastUpdated: new Date(data.lastUpdated).toISOString(),
+        currentLastUpdated: lastUpdated ? new Date(lastUpdated).toISOString() : 'none',
+        firstStock: data.stocks?.[0]?.symbol,
+        dataSource: data.dataSource
+      });
+      const newStocks = data.stocks || [];
+      setStocks(newStocks);
       setLastUpdated(data.lastUpdated || Date.now());
-      if (data.stocks && data.stocks.length > 0 && !selectedStock) {
-        setSelectedStock(data.stocks[0]);
+      
+      // Update selected stock with fresh data
+      if (selectedStock && newStocks.length > 0) {
+        const updatedStock = newStocks.find(s => s.symbol === selectedStock.symbol);
+        if (updatedStock) {
+          setSelectedStock(updatedStock);
+        }
+      } else if (newStocks.length > 0) {
+        setSelectedStock(newStocks[0]);
+      }
+      if (isAutoRefresh) {
+        console.log('Auto-refresh completed successfully');
       }
     } catch (error) {
       console.error('Error fetching stocks:', error);
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   };
 
@@ -181,6 +252,25 @@ export default function Home() {
     if (hours < 24) return `${hours}h ago`;
     const days = Math.floor(hours / 24);
     return `${days}d ago`;
+  };
+
+  const formatTimeToNext = (nextUpdateTime: number) => {
+    if (!nextUpdateTime || nextUpdateTime === 0) {
+      return 'Calculating...';
+    }
+    const diff = nextUpdateTime - currentTime;
+    
+    // If we're past the update time but not by much (within 30 seconds), show updating
+    if (diff <= 0 && diff > -30000) return 'Updating...';
+    
+    // If we're way past the update time, recalculate
+    if (diff <= -30000) return 'Calculating...';
+    
+    const minutes = Math.floor(diff / 60000);
+    const seconds = Math.floor((diff % 60000) / 1000);
+    
+    if (minutes > 0) return `${minutes}m ${seconds}s`;
+    return `${seconds}s`;
   };
 
   if (loading) {
@@ -201,8 +291,19 @@ export default function Home() {
             <p className="text-gray-400 text-sm">Penny Stock Sentiment Tracker</p>
           </div>
           <div className="text-right">
-            <div className="text-sm text-gray-400">Last updated</div>
-            <div className="text-sm text-white">{formatTimeAgo(lastUpdated)}</div>
+            <div className="flex gap-6">
+              <div>
+                <div className="text-sm text-gray-400">Last updated</div>
+                <div className="text-sm text-white">{formatTimeAgo(lastUpdated)}</div>
+              </div>
+              <div>
+                <div className="text-sm text-gray-400">Time to next update</div>
+                <div className="text-sm text-white flex items-center gap-1">
+                  {refreshing && <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>}
+                  {formatTimeToNext(nextUpdate)}
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </header>
@@ -239,7 +340,7 @@ export default function Home() {
                         <span className={`ml-1 text-sm ${
                           stock.sentimentScore > 0 ? 'text-green-400' : 'text-red-400'
                         }`}>
-                          {stock.sentimentScore > 0 ? '+' : ''}{stock.sentimentScore}
+                          {stock.sentimentScore > 0 ? '+' : ''}{stock.sentimentScore.toFixed(2)}
                         </span>
                       </div>
                     </div>
@@ -271,7 +372,7 @@ export default function Home() {
                     <div className={`text-xl font-bold ${
                       selectedStock.sentimentScore > 0 ? 'text-green-400' : 'text-red-400'
                     }`}>
-                      {selectedStock.sentimentScore > 0 ? '+' : ''}{selectedStock.sentimentScore}
+                      {selectedStock.sentimentScore > 0 ? '+' : ''}{selectedStock.sentimentScore.toFixed(2)}
                     </div>
                   </div>
                 </div>
@@ -301,12 +402,6 @@ export default function Home() {
                             {stockPrice.change >= 0 ? '+' : ''}{stockPrice.change} ({stockPrice.changePercent}%)
                           </div>
                         )}
-                      </div>
-                      <div className="text-right">
-                        <div className="text-sm text-gray-400">Last Updated</div>
-                        <div className="text-sm text-gray-300">
-                          {new Date().toLocaleTimeString()}
-                        </div>
                       </div>
                     </div>
                   </div>
@@ -381,7 +476,7 @@ export default function Home() {
                         </div>
                         <div className="flex items-center justify-between text-xs text-gray-400">
                           <span>r/{post.subreddit}</span>
-                          <span>u/{post.author}</span>
+                          <span>Published: {new Date(post.created_utc * 1000).toLocaleDateString()}</span>
                         </div>
                       </a>
                     ))}
@@ -404,7 +499,7 @@ export default function Home() {
       <footer className="border-t border-gray-800 p-6 mt-12">
         <div className="max-w-7xl mx-auto text-center text-gray-400 text-sm">
           <p>Not financial advice. For entertainment and research purposes only.</p>
-          <p className="mt-2">Data from Reddit • Updates every 5 minutes</p>
+          <p className="mt-2">Data from Reddit • Updates every 15 minutes</p>
         </div>
       </footer>
     </div>
