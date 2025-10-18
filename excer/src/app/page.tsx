@@ -287,7 +287,7 @@ export default function Home() {
       <header className="border-b border-gray-800 p-6">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-bold text-white">excer</h1>
+            <h1 className="text-2xl font-bold text-white">Excer</h1>
             <p className="text-gray-400 text-sm">Penny Stock Sentiment Tracker</p>
           </div>
           <div className="text-right">
@@ -309,16 +309,16 @@ export default function Home() {
       </header>
 
       <div className="max-w-7xl mx-auto p-6">
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-stretch">
           {/* Left Panel - Trending Stocks */}
-          <div className="lg:col-span-1">
-            <div className="bg-gray-800 rounded-lg p-6">
+          <div className="lg:col-span-1 flex">
+            <div className="bg-gray-800 rounded-lg p-6 w-full flex flex-col">
               <h2 className="text-xl font-semibold mb-4 flex items-center">
                 <TrendingUp className="w-5 h-5 mr-2" />
                 Trending Stocks ({stocks.length})
               </h2>
               
-              <div className="space-y-3">
+              <div className="flex-1 overflow-y-auto space-y-3 pr-2">
                 {stocks.map((stock) => (
                   <div
                     key={stock.symbol}
@@ -362,9 +362,9 @@ export default function Home() {
           </div>
 
           {/* Right Panel - Stock Details */}
-          <div className="lg:col-span-2">
+          <div className="lg:col-span-2 flex">
             {selectedStock ? (
-              <div className="bg-gray-800 rounded-lg p-6">
+              <div className="bg-gray-800 rounded-lg p-6 w-full flex flex-col">
                 <div className="flex items-center justify-between mb-6">
                   <h2 className="text-2xl font-bold">${selectedStock.symbol}</h2>
                   <div className="text-right">
