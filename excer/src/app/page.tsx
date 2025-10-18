@@ -1,6 +1,6 @@
 'use client';
 
-import { MessageCircle, TrendingDown, TrendingUp, Users } from 'lucide-react';
+import { ArrowDown, ArrowUp, ArrowUpDown, ChevronDown, MessageCircle, TrendingDown, TrendingUp, Users } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 
 interface StockData {
@@ -29,9 +29,13 @@ export default function Home() {
   const [nextUpdate, setNextUpdate] = useState<number>(0);
   const [currentTime, setCurrentTime] = useState<number>(Date.now());
   const [refreshing, setRefreshing] = useState<boolean>(false);
+  const [marketTimer, setMarketTimer] = useState<string>('Calculating...');
   const [chartType, setChartType] = useState<'area' | 'candles'>('area');
   const [stockPrice, setStockPrice] = useState<{price: string, change: string, changePercent: string} | null>(null);
   const [priceLoading, setPriceLoading] = useState(false);
+  const [sortBy, setSortBy] = useState<'posts' | 'sentiment' | 'mentions'>('posts');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
+  const [showSortMenu, setShowSortMenu] = useState(false);
   const widgetRef = useRef<any>(null);
 
   useEffect(() => {
@@ -67,6 +71,23 @@ export default function Home() {
     };
   }, []);
 
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (showSortMenu) {
+        setShowSortMenu(false);
+      }
+    };
+
+    if (showSortMenu) {
+      document.addEventListener('click', handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener('click', handleClickOutside);
+    };
+  }, [showSortMenu]);
+
   // Set next update time once when data loads, then just count down
   useEffect(() => {
     if (lastUpdated > 0) {
@@ -79,6 +100,7 @@ export default function Home() {
   useEffect(() => {
     const interval = setInterval(() => {
       setCurrentTime(Date.now());
+      setMarketTimer(formatMarketTimer());
     }, 1000);
     
     return () => clearInterval(interval);
@@ -273,6 +295,144 @@ export default function Home() {
     return `${seconds}s`;
   };
 
+  const getNextMarketTime = () => {
+    // Get current time in NY timezone
+    const now = new Date();
+    
+    // Get NY time components using Intl.DateTimeFormat
+    const nyFormatter = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'America/New_York',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false
+    });
+    
+    const nyParts = nyFormatter.formatToParts(now);
+    const nyDate = {
+      year: parseInt(nyParts.find(p => p.type === 'year')?.value || '0'),
+      month: parseInt(nyParts.find(p => p.type === 'month')?.value || '0'),
+      day: parseInt(nyParts.find(p => p.type === 'day')?.value || '0'),
+      hour: parseInt(nyParts.find(p => p.type === 'hour')?.value || '0'),
+      minute: parseInt(nyParts.find(p => p.type === 'minute')?.value || '0'),
+      second: parseInt(nyParts.find(p => p.type === 'second')?.value || '0')
+    };
+
+    // Calculate what day of week it is in NY
+    const nyDayOfWeek = new Date(nyDate.year, nyDate.month - 1, nyDate.day).getDay();
+
+    // Determine target date for next 9:30 AM NY time
+    let targetYear = nyDate.year;
+    let targetMonth = nyDate.month;
+    let targetDay = nyDate.day;
+    
+    // If we're past 9:30 AM today, move to tomorrow
+    if (nyDate.hour > 9 || (nyDate.hour === 9 && nyDate.minute >= 30)) {
+      targetDay += 1;
+    }
+
+    // Skip weekends - if target is weekend, move to Monday
+    let targetDate = new Date(targetYear, targetMonth - 1, targetDay);
+    while (targetDate.getDay() === 0 || targetDate.getDay() === 6) {
+      targetDate.setDate(targetDate.getDate() + 1);
+    }
+
+    // Create a UTC date string for 9:30 AM on the target date
+    const targetUTC = new Date(Date.UTC(
+      targetDate.getFullYear(),
+      targetDate.getMonth(),
+      targetDate.getDate(),
+      13, // 9:30 AM ET = 13:30 UTC (during EDT)
+      30
+    ));
+
+    // Get the target timestamp
+    const targetTimestamp = targetUTC.getTime();
+
+    
+    return { time: targetTimestamp, isOpening: true };
+  };
+
+  const formatMarketTimer = () => {
+    const { time, isOpening } = getNextMarketTime();
+    const now = Date.now();
+    const diff = time - now;
+    
+    if (diff <= 0) return 'Calculating...';
+    
+    // Calculate days first
+    const days = Math.floor(diff / (24 * 3600000));
+    const remainingMs = diff % (24 * 3600000);
+    
+    // Then hours from remaining
+    const hours = Math.floor(remainingMs / 3600000);
+    const remainingAfterHours = remainingMs % 3600000;
+    
+    // Then minutes and seconds
+    const minutes = Math.floor(remainingAfterHours / 60000);
+    const seconds = Math.floor((remainingAfterHours % 60000) / 1000);
+    
+    // Format with colons between values
+    const timeStr = `${days}:${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+    
+    return `Time to market ${isOpening ? 'open' : 'close'}: ${timeStr}`;
+  };
+
+  const getSortedStocks = () => {
+    const sorted = [...stocks].sort((a, b) => {
+      let aValue: number;
+      let bValue: number;
+      
+      switch (sortBy) {
+        case 'posts':
+          aValue = a.uniquePosts;
+          bValue = b.uniquePosts;
+          break;
+        case 'sentiment':
+          aValue = a.sentimentScore;
+          bValue = b.sentimentScore;
+          break;
+        case 'mentions':
+          aValue = a.mentions;
+          bValue = b.mentions;
+          break;
+        default:
+          aValue = a.uniquePosts;
+          bValue = b.uniquePosts;
+      }
+      
+      return sortOrder === 'desc' ? bValue - aValue : aValue - bValue;
+    });
+    
+    return sorted;
+  };
+
+  const handleSort = (newSortBy: 'posts' | 'sentiment' | 'mentions') => {
+    if (sortBy === newSortBy) {
+      setSortOrder(sortOrder === 'desc' ? 'asc' : 'desc');
+    } else {
+      setSortBy(newSortBy);
+      setSortOrder('desc');
+    }
+    setShowSortMenu(false);
+  };
+
+  const toggleSortOrder = () => {
+    setSortOrder(sortOrder === 'desc' ? 'asc' : 'desc');
+  };
+
+  const getSortLabel = () => {
+    switch (sortBy) {
+      case 'posts': return 'Posts';
+      case 'sentiment': return 'Sentiment';
+      case 'mentions': return 'Mentions';
+      default: return 'Posts';
+    }
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-900 flex items-center justify-center">
@@ -289,6 +449,9 @@ export default function Home() {
           <div>
             <h1 className="text-2xl font-bold text-white">Excer</h1>
             <p className="text-gray-400 text-sm">Penny Stock Sentiment Tracker</p>
+          </div>
+          <div className="text-center flex-1 mx-12">
+            <div className="text-sm text-white font-medium">{marketTimer}</div>
           </div>
           <div className="text-right">
             <div className="flex gap-6">
@@ -313,13 +476,73 @@ export default function Home() {
           {/* Left Panel - Trending Stocks */}
           <div className="lg:col-span-1 flex">
             <div className="bg-gray-800 rounded-lg p-6 w-full flex flex-col">
-              <h2 className="text-xl font-semibold mb-4 flex items-center">
-                <TrendingUp className="w-5 h-5 mr-2" />
-                Trending Stocks ({stocks.length})
-              </h2>
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-xl font-semibold flex items-center">
+                  <TrendingUp className="w-5 h-5 mr-2" />
+                  Trending Stocks ({stocks.length})
+                </h2>
+                <div className="relative">
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setShowSortMenu(!showSortMenu)}
+                      className="flex items-center gap-2 px-3 py-1 rounded text-sm bg-gray-700 text-gray-300 hover:bg-gray-600 transition-colors"
+                    >
+                      <ArrowUpDown className="w-4 h-4" />
+                      <span>{getSortLabel()}</span>
+                      <ChevronDown className="w-3 h-3" />
+                    </button>
+                    <button
+                      onClick={toggleSortOrder}
+                      className="p-1 rounded bg-gray-700 text-gray-300 hover:bg-gray-600 transition-colors"
+                      title={sortOrder === 'desc' ? 'Most to least' : 'Least to most'}
+                    >
+                      {sortOrder === 'desc' ? (
+                        <ArrowUp className="w-4 h-4" />
+                      ) : (
+                        <ArrowDown className="w-4 h-4" />
+                      )}
+                    </button>
+                  </div>
+                  
+                  {showSortMenu && (
+                    <div className="absolute right-0 top-full mt-1 w-32 bg-gray-700 rounded-lg shadow-lg border border-gray-600 z-10">
+                      <button
+                        onClick={() => handleSort('posts')}
+                        className={`w-full px-3 py-2 text-left text-sm rounded-t-lg transition-colors ${
+                          sortBy === 'posts' 
+                            ? 'bg-blue-600 text-white' 
+                            : 'text-gray-300 hover:bg-gray-600'
+                        }`}
+                      >
+                        Posts
+                      </button>
+                      <button
+                        onClick={() => handleSort('sentiment')}
+                        className={`w-full px-3 py-2 text-left text-sm transition-colors ${
+                          sortBy === 'sentiment' 
+                            ? 'bg-blue-600 text-white' 
+                            : 'text-gray-300 hover:bg-gray-600'
+                        }`}
+                      >
+                        Sentiment
+                      </button>
+                      <button
+                        onClick={() => handleSort('mentions')}
+                        className={`w-full px-3 py-2 text-left text-sm rounded-b-lg transition-colors ${
+                          sortBy === 'mentions' 
+                            ? 'bg-blue-600 text-white' 
+                            : 'text-gray-300 hover:bg-gray-600'
+                        }`}
+                      >
+                        Mentions
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
               
               <div className="flex-1 overflow-y-auto space-y-3 pr-2">
-                {stocks.map((stock) => (
+                {getSortedStocks().map((stock) => (
                   <div
                     key={stock.symbol}
                     onClick={() => setSelectedStock(stock)}

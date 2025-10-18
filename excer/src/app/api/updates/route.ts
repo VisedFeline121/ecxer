@@ -6,7 +6,7 @@ export const fetchCache = 'force-no-store';
 
 // Store active connections
 const encoder = new TextEncoder();
-let connections = new Set<ReadableStreamController>();
+const connections = new Set<ReadableStreamDefaultController>();
 
 export async function GET() {
   const stream = new ReadableStream({
@@ -16,19 +16,22 @@ export async function GET() {
       // Send initial connection message
       controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: 'connected' })}\n\n`));
 
-      // Remove controller when connection closes
       return () => {
         connections.delete(controller);
       };
     },
+    cancel() {
+      // Connection was closed
+      connections.delete(this);
+    }
   });
 
   return new NextResponse(stream, {
     headers: {
-      'Content-Type': 'text/event-stream; charset=utf-8',
+      'Content-Type': 'text/event-stream',
       'Connection': 'keep-alive',
-      'Cache-Control': 'no-cache, no-transform',
-      'Content-Encoding': 'none',
+      'Cache-Control': 'no-cache',
+      'X-Accel-Buffering': 'no',
     },
   });
 }
@@ -37,13 +40,19 @@ export async function GET() {
 export async function notifyClients() {
   console.log('[SSE] Sending update to clients');
   const message = encoder.encode(`data: ${JSON.stringify({ type: 'update', timestamp: Date.now() })}\n\n`);
+  const closedConnections = new Set<ReadableStreamDefaultController>();
 
-  connections.forEach((client) => {
+  for (const client of connections) {
     try {
       client.enqueue(message);
     } catch (error) {
       console.error('[SSE] Failed to send message:', error);
-      connections.delete(client);
+      closedConnections.add(client);
     }
+  }
+
+  // Clean up closed connections
+  closedConnections.forEach(client => {
+    connections.delete(client);
   });
 }
