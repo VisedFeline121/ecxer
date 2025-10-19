@@ -534,8 +534,6 @@ class RedditWorker {
         Object.keys(stockData).forEach(symbol => {
           if (allStockData[symbol]) {
             allStockData[symbol].mentions += stockData[symbol].mentions;
-            allStockData[symbol].positiveMentions += stockData[symbol].positiveMentions;
-            allStockData[symbol].negativeMentions += stockData[symbol].negativeMentions;
             
             // Merge posts and deduplicate by ID
             const combinedPosts = [...allStockData[symbol].posts, ...stockData[symbol].posts];

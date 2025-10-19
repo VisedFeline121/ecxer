@@ -11,10 +11,13 @@ const connections = new Set<ReadableStreamDefaultController>();
 export async function GET() {
   const stream = new ReadableStream({
     start(controller) {
+      console.log('[SSE] New client connected');
       connections.add(controller);
       
       // Send initial connection message
-      controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: 'connected' })}\n\n`));
+      const initialMessage = encoder.encode(`data: ${JSON.stringify({ type: 'connected' })}\n\n`);
+      console.log('[SSE] Sending initial message:', initialMessage);
+      controller.enqueue(initialMessage);
 
       return () => {
         connections.delete(controller);
@@ -30,7 +33,9 @@ export async function GET() {
     headers: {
       'Content-Type': 'text/event-stream',
       'Connection': 'keep-alive',
-      'Cache-Control': 'no-cache',
+      'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+      'Pragma': 'no-cache',
+      'Expires': '0',
       'X-Accel-Buffering': 'no',
     },
   });
@@ -38,15 +43,19 @@ export async function GET() {
 
 // Function to notify all clients
 export async function notifyClients() {
-  console.log('[SSE] Sending update to clients');
+  console.log('[SSE] Sending update to clients, active connections:', connections.size);
   const message = encoder.encode(`data: ${JSON.stringify({ type: 'update', timestamp: Date.now() })}\n\n`);
+  console.log('[SSE] Update message:', message);
   const closedConnections = new Set<ReadableStreamDefaultController>();
 
   for (const client of connections) {
     try {
+      console.log('[SSE] Sending to client...');
       client.enqueue(message);
+      console.log('[SSE] Successfully sent to client');
     } catch (error) {
       console.error('[SSE] Failed to send message:', error);
+      console.error('[SSE] Client state:', client);
       closedConnections.add(client);
     }
   }

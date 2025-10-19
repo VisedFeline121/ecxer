@@ -46,12 +46,19 @@ export default function Home() {
     
     eventSource.onmessage = (event) => {
       console.log('[SSE] Event received:', event.data);
-      const data = JSON.parse(event.data);
-      if (data.type === 'update') {
-        console.log('[Worker] Finished, fetching new data...');
-        fetchStocks(true);
-      } else {
-        console.log('[SSE] Connection established');
+      try {
+        const data = JSON.parse(event.data);
+        console.log('[SSE] Parsed data:', data);
+        if (data.type === 'update') {
+          console.log('[Worker] Finished, fetching new data...');
+          fetchStocks(true);
+        } else if (data.type === 'connected') {
+          console.log('[SSE] Connection established');
+        } else {
+          console.log('[SSE] Unknown event type:', data.type);
+        }
+      } catch (error) {
+        console.error('[SSE] Error parsing event data:', error);
       }
     };
 
@@ -61,7 +68,11 @@ export default function Home() {
       setTimeout(() => {
         console.log('Attempting to reconnect SSE...');
         eventSource.close();
+        
+        // Create new connection with all handlers
         const newEventSource = new EventSource('/api/updates');
+        newEventSource.onmessage = eventSource.onmessage;  // Copy over the message handler
+        newEventSource.onerror = eventSource.onerror;      // Copy over the error handler
         eventSource = newEventSource;
       }, 5000);
     };
@@ -680,10 +691,10 @@ export default function Home() {
                   </div>
                 </div>
 
-                <div>
+                <div className="flex flex-col">
                   <h3 className="text-lg font-semibold mb-4">Recent Discussions</h3>
-                  <div className="space-y-3">
-                    {selectedStock.posts.slice(0, 10).map((post, index) => (
+                  <div className="space-y-3 overflow-y-auto pr-2" style={{ height: '1200px' }}>
+                    {selectedStock.posts.map((post, index) => (
                       <a 
                         key={index} 
                         href={`https://www.reddit.com${post.permalink}`}
