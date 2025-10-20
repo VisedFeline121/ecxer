@@ -36,6 +36,9 @@ export default function Home() {
   const [sortBy, setSortBy] = useState<'posts' | 'sentiment' | 'mentions'>('posts');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
   const [showSortMenu, setShowSortMenu] = useState(false);
+  const [discussionSortBy, setDiscussionSortBy] = useState<'date' | 'upvotes'>('date');
+  const [discussionSortOrder, setDiscussionSortOrder] = useState<'asc' | 'desc'>('desc');
+  const [showDiscussionSortMenu, setShowDiscussionSortMenu] = useState(false);
   const widgetRef = useRef<any>(null);
 
   useEffect(() => {
@@ -88,16 +91,19 @@ export default function Home() {
       if (showSortMenu) {
         setShowSortMenu(false);
       }
+      if (showDiscussionSortMenu) {
+        setShowDiscussionSortMenu(false);
+      }
     };
 
-    if (showSortMenu) {
+    if (showSortMenu || showDiscussionSortMenu) {
       document.addEventListener('click', handleClickOutside);
     }
 
     return () => {
       document.removeEventListener('click', handleClickOutside);
     };
-  }, [showSortMenu]);
+  }, [showSortMenu, showDiscussionSortMenu]);
 
   // Set next update time once when data loads, then just count down
   useEffect(() => {
@@ -444,6 +450,55 @@ export default function Home() {
     }
   };
 
+  const getSortedDiscussions = () => {
+    if (!selectedStock) return [];
+    
+    const sorted = [...selectedStock.posts].sort((a, b) => {
+      let aValue: number;
+      let bValue: number;
+      
+      switch (discussionSortBy) {
+        case 'date':
+          aValue = a.created_utc;
+          bValue = b.created_utc;
+          break;
+        case 'upvotes':
+          aValue = a.score;
+          bValue = b.score;
+          break;
+        default:
+          aValue = a.created_utc;
+          bValue = b.created_utc;
+      }
+      
+      return discussionSortOrder === 'desc' ? aValue - bValue : bValue - aValue;
+    });
+    
+    return sorted;
+  };
+
+  const handleDiscussionSort = (newSortBy: 'date' | 'upvotes') => {
+    if (discussionSortBy === newSortBy) {
+      setDiscussionSortOrder(discussionSortOrder === 'desc' ? 'asc' : 'desc');
+    } else {
+      setDiscussionSortBy(newSortBy);
+      setDiscussionSortOrder('desc');
+    }
+    setShowDiscussionSortMenu(false);
+  };
+
+  const toggleDiscussionSortOrder = () => {
+    setDiscussionSortOrder(discussionSortOrder === 'desc' ? 'asc' : 'desc');
+  };
+
+  const getDiscussionSortLabel = () => {
+    switch (discussionSortBy) {
+      case 'date': return 'Date';
+      case 'upvotes': return 'Upvotes';
+      default: return 'Date';
+    }
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-900 flex items-center justify-center">
@@ -692,9 +747,58 @@ export default function Home() {
                 </div>
 
                 <div className="flex flex-col">
-                  <h3 className="text-lg font-semibold mb-4">Recent Discussions</h3>
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-lg font-semibold">Recent Discussions</h3>
+                    <div className="flex items-center space-x-2">
+                      <div className="relative">
+                        <button
+                          onClick={() => setShowDiscussionSortMenu(!showDiscussionSortMenu)}
+                          className="flex items-center space-x-1 px-3 py-1 bg-gray-700 text-gray-300 rounded-lg hover:bg-gray-600 transition-colors text-sm"
+                        >
+                          <ArrowUpDown className="w-4 h-4" />
+                          <span>{getDiscussionSortLabel()}</span>
+                          <ChevronDown className="w-3 h-3" />
+                        </button>
+                        {showDiscussionSortMenu && (
+                          <div className="absolute right-0 top-full mt-1 w-32 bg-gray-700 rounded-lg shadow-lg border border-gray-600 z-10">
+                            <button
+                              onClick={() => handleDiscussionSort('date')}
+                              className={`w-full px-3 py-2 text-left text-sm rounded-t-lg transition-colors ${
+                                discussionSortBy === 'date' 
+                                  ? 'bg-blue-600 text-white' 
+                                  : 'text-gray-300 hover:bg-gray-600'
+                              }`}
+                            >
+                              Date
+                            </button>
+                            <button
+                              onClick={() => handleDiscussionSort('upvotes')}
+                              className={`w-full px-3 py-2 text-left text-sm rounded-b-lg transition-colors ${
+                                discussionSortBy === 'upvotes' 
+                                  ? 'bg-blue-600 text-white' 
+                                  : 'text-gray-300 hover:bg-gray-600'
+                              }`}
+                            >
+                              Upvotes
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                      <button
+                        onClick={toggleDiscussionSortOrder}
+                        className="p-1 rounded bg-gray-700 text-gray-300 hover:bg-gray-600 transition-colors"
+                        title={discussionSortOrder === 'desc' ? 'Most to least' : 'Least to most'}
+                      >
+                        {discussionSortOrder === 'desc' ? (
+                          <ArrowDown className="w-4 h-4" />
+                        ) : (
+                          <ArrowUp className="w-4 h-4" />
+                        )}
+                      </button>
+                    </div>
+                  </div>
                   <div className="space-y-3 overflow-y-auto pr-2" style={{ height: '1200px' }}>
-                    {selectedStock.posts.map((post, index) => (
+                    {getSortedDiscussions().map((post, index) => (
                       <a 
                         key={index} 
                         href={`https://www.reddit.com${post.permalink}`}
