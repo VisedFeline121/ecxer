@@ -330,7 +330,7 @@ class RedditWorker {
           // Skip common false positives and very short/long symbols
           const FALSE_POSITIVES = [
             // Common English words (2-5 letters)
-            'THE', 'AND', 'FOR', 'ARE', 'BUT', 'NOT', 'YOU', 'ALL', 'CAN', 'HER', 'WAS', 'ONE', 'OUR', 'HAD', 'WHAT', 'WERE', 'WHEN', 'YOUR', 'HOW', 'SAID', 'EACH', 'WHICH', 'THEIR', 'TIME', 'WILL', 'ABOUT', 'IF', 'UP', 'OUT', 'MANY', 'THEN', 'THEM', 'THESE', 'SO', 'SOME', 'WOULD', 'MAKE', 'LIKE', 'INTO', 'HIM', 'HAS', 'MORE', 'GO', 'NO', 'WAY', 'COULD', 'MY', 'THAN', 'FIRST', 'BEEN', 'CALL', 'WHO', 'ITS', 'NOW', 'FIND', 'LONG', 'DOWN', 'DAY', 'DID', 'GET', 'COME', 'MADE', 'MAY', 'PART', 'NEW', 'WORK', 'USE', 'MAN', 'FIND', 'GIVE', 'JUST', 'WHERE', 'MOST', 'GOOD', 'MUCH', 'SOME', 'TIME', 'VERY', 'WHEN', 'COME', 'HERE', 'JUST', 'LIKE', 'LONG', 'MAKE', 'MANY', 'OVER', 'SUCH', 'TAKE', 'THAN', 'THEM', 'WELL', 'WERE',
+            'THE', 'AND', 'FOR', 'ARE', 'BUT', 'NOT', 'YOU', 'ALL', 'CAN', 'HER', 'WAS', 'ONE', 'OUR', 'HAD', 'WHAT', 'WERE', 'WHEN', 'YOUR', 'HOW', 'SAID', 'EACH', 'WHICH', 'THEIR', 'TIME', 'WILL', 'ABOUT', 'IF', 'UP', 'OUT', 'MANY', 'THEN', 'THEM', 'THESE', 'SO', 'SOME', 'WOULD', 'MAKE', 'LIKE', 'INTO', 'HIM', 'HAS', 'MORE', 'GO', 'NO', 'WAY', 'COULD', 'MY', 'THAN', 'FIRST', 'BEEN', 'CALL', 'WHO', 'ITS', 'NOW', 'FIND', 'LONG', 'DOWN', 'DAY', 'DID', 'GET', 'COME', 'MADE', 'MAY', 'PART', 'NEW', 'WORK', 'USE', 'MAN', 'FIND', 'GIVE', 'JUST', 'WHERE', 'MOST', 'GOOD', 'MUCH', 'SOME', 'TIME', 'VERY', 'WHEN', 'COME', 'HERE', 'JUST', 'LIKE', 'LONG', 'MAKE', 'MANY', 'OVER', 'SUCH', 'TAKE', 'THAN', 'THEM', 'WELL', 'WERE', 'TODAY',
             // Business/Finance Terms
             'CEO', 'CFO', 'COO', 'CTO', 'CMO', 'CRO', 'CCO', 'CDO', 'CIO', 'CLO', 'CPO',
             'IPO', 'ICO', 'SPO', 'APO', 'ETF', 'REIT', 'SPAC',
@@ -349,7 +349,7 @@ class RedditWorker {
             'IN', 'ON', 'AT', 'BY', 'OF', 'OR', 'AN', 'AS', 'BE', 'DO', 'IF', 'SO', 'UP', 'VS',
             // Common Verbs
             'AM', 'IS', 'ARE', 'WAS', 'WERE', 'BE', 'BEEN', 'GO', 'GOES', 'WENT',
-            'DO', 'DOES', 'DID', 'DONE', 'SEE', 'SEEN', 'SAW', 'GET', 'GOT',
+            'DO', 'DOES', 'DID', 'DONE', 'SEE', 'SEEN', 'SAW', 'GET', 'GOT', 'HOLD', 'BUY', 'SELL',
             // Common Adjectives
             'BIG', 'BAD', 'LOW', 'HIGH', 'HOT', 'COLD', 'FAST', 'SLOW', 'GOOD',
             // Common Pronouns
