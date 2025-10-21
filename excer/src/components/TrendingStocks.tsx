@@ -2,6 +2,7 @@
 
 import { ArrowDown, ArrowUp, ArrowUpDown, ChevronDown, MessageCircle, TrendingDown, TrendingUp, Users } from 'lucide-react';
 import { SortBy, SortOrder, StockData } from '../types';
+import { StockCardSkeleton } from './SkeletonLoader';
 
 interface TrendingStocksProps {
   stocks: StockData[];
@@ -99,7 +100,13 @@ export default function TrendingStocks({
         </div>
         
         <div className="flex-1 overflow-y-auto space-y-3 pr-2">
-          {getSortedStocks().map((stock) => (
+          {stocks.length === 0 ? (
+            // Show skeleton loaders when no stocks
+            Array.from({ length: 8 }).map((_, index) => (
+              <StockCardSkeleton key={index} />
+            ))
+          ) : (
+            getSortedStocks().map((stock) => (
             <div
               key={stock.symbol}
               onClick={() => onStockSelect(stock)}
@@ -136,7 +143,8 @@ export default function TrendingStocks({
                 </span>
               </div>
             </div>
-          ))}
+            ))
+          )}
         </div>
       </div>
     </div>

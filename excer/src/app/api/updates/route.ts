@@ -19,13 +19,29 @@ export async function GET() {
       console.log('[SSE] Sending initial message:', initialMessage);
       controller.enqueue(initialMessage);
 
+      // Send keep-alive every 30 seconds to prevent timeout
+      const keepAliveInterval = setInterval(() => {
+        try {
+          const keepAliveMessage = encoder.encode(`data: ${JSON.stringify({ type: 'keepalive', timestamp: Date.now() })}\n\n`);
+          controller.enqueue(keepAliveMessage);
+        } catch (error) {
+          console.log('[SSE] Keep-alive failed, connection likely closed');
+          clearInterval(keepAliveInterval);
+          connections.delete(controller);
+        }
+      }, 30000);
+
+      // Return cleanup function
       return () => {
+        console.log('[SSE] Client disconnected (cleanup)');
+        clearInterval(keepAliveInterval);
         connections.delete(controller);
       };
     },
-    cancel() {
+    cancel(controller) {
       // Connection was closed
-      connections.delete(this);
+      console.log('[SSE] Client disconnected (cancel)');
+      connections.delete(controller);
     }
   });
 

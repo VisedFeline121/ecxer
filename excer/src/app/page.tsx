@@ -2,17 +2,22 @@
 
 import { Menu } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
+import ErrorBoundary from '../components/ErrorBoundary';
+import ErrorDisplay from '../components/ErrorDisplay';
 import Footer from '../components/Footer';
 import Header from '../components/Header';
+import LoadingScreen from '../components/LoadingScreen';
 import MobileTrendingStocks from '../components/MobileTrendingStocks';
 import StockDetails from '../components/StockDetails';
 import TrendingStocks from '../components/TrendingStocks';
+import { isAPIError, isNetworkError, useErrorHandler } from '../hooks/useErrorHandler';
 import { ChartType, DiscussionSortBy, SortBy, SortOrder, StockData, StockPrice } from '../types';
 
 export default function Home() {
   const [stocks, setStocks] = useState<StockData[]>([]);
   const [selectedStock, setSelectedStock] = useState<StockData | null>(null);
   const [loading, setLoading] = useState(true);
+  const { error, handleError, clearError, retry } = useErrorHandler();
   const [lastUpdated, setLastUpdated] = useState<number>(0);
   const [nextUpdate, setNextUpdate] = useState<number>(0);
   const [currentTime, setCurrentTime] = useState<number>(Date.now());
@@ -46,6 +51,8 @@ export default function Home() {
           fetchStocks(true);
         } else if (data.type === 'connected') {
           console.log('[SSE] Connection established');
+        } else if (data.type === 'keepalive') {
+          console.log('[SSE] Keep-alive received');
         } else {
           console.log('[SSE] Unknown event type:', data.type);
         }
@@ -56,6 +63,8 @@ export default function Home() {
 
     eventSource.onerror = (error) => {
       console.error('SSE connection error:', error);
+      handleError('Real-time updates connection lost. Server might be down.', 'network');
+      
       // Try to reconnect after a delay
       setTimeout(() => {
         console.log('Attempting to reconnect SSE...');
@@ -234,10 +243,25 @@ export default function Home() {
         console.log('[Refresh] Starting auto-refresh...');
         setRefreshing(true);
       }
+      
+      // Clear any previous errors
+      clearError();
+      
       // Add cache-busting parameter to prevent caching
       console.log('[API] Fetching data...');
       const response = await fetch('/api/reddit?_=' + Date.now());
+      
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+      
       const data = await response.json();
+      
+      // Validate data structure
+      if (!data || typeof data !== 'object') {
+        throw new Error('Invalid data format received from server');
+      }
+      
       console.log('[API] Received data:', {
         stocksCount: data.stocks?.length || 0,
         lastUpdated: new Date(data.lastUpdated).toISOString(),
@@ -245,24 +269,46 @@ export default function Home() {
         firstStock: data.stocks?.[0]?.symbol,
         dataSource: data.dataSource
       });
-      const newStocks = data.stocks || [];
-      setStocks(newStocks);
-      setLastUpdated(data.lastUpdated || Date.now());
       
-      // Update selected stock with fresh data
+      // Validate and sanitize data
+      const newStocks = Array.isArray(data.stocks) ? data.stocks.filter(stock => 
+        stock && 
+        typeof stock.symbol === 'string' && 
+        stock.symbol.length > 0 &&
+        Array.isArray(stock.posts)
+      ) : [];
+      
+      setStocks(newStocks);
+      setLastUpdated(typeof data.lastUpdated === 'number' ? data.lastUpdated : Date.now());
+      
+      // Update selected stock with fresh data (with validation)
       if (selectedStock && newStocks.length > 0) {
         const updatedStock = newStocks.find((s: StockData) => s.symbol === selectedStock.symbol);
         if (updatedStock) {
           setSelectedStock(updatedStock);
         }
       } else if (newStocks.length > 0) {
-        setSelectedStock(newStocks[0]);
+        // Validate first stock before selecting
+        const firstStock = newStocks[0];
+        if (firstStock && firstStock.symbol) {
+          setSelectedStock(firstStock);
+        }
       }
+      
       if (isAutoRefresh) {
         console.log('Auto-refresh completed successfully');
       }
     } catch (error) {
       console.error('Error fetching stocks:', error);
+      
+      // Determine error type and handle appropriately
+      if (isNetworkError(error)) {
+        handleError(error, 'network');
+      } else if (isAPIError(error)) {
+        handleError(error, 'api');
+      } else {
+        handleError(error, 'data');
+      }
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -489,15 +535,12 @@ export default function Home() {
   };
 
   if (loading) {
-    return (
-      <div className="min-h-screen bg-gray-900 flex items-center justify-center">
-        <div className="text-white text-xl">Loading trending stocks...</div>
-      </div>
-    );
+    return <LoadingScreen />;
   }
 
   return (
-    <div className="min-h-screen bg-gray-900 text-white">
+    <ErrorBoundary>
+      <div className="min-h-screen bg-gray-900 text-white">
       <Header 
         marketTimer={marketTimer}
         lastUpdated={lastUpdated}
@@ -508,6 +551,17 @@ export default function Home() {
       />
 
       <div className="max-w-7xl mx-auto p-6">
+        {/* Error Display */}
+        {error && (
+          <div className="mb-6">
+            <ErrorDisplay
+              error={error.message}
+              type={error.type}
+              onRetry={() => retry(fetchStocks)}
+            />
+          </div>
+        )}
+
         {/* Mobile Trending Stocks Button */}
         <div className="lg:hidden mb-4">
           <button
@@ -570,6 +624,7 @@ export default function Home() {
       />
 
       <Footer />
-    </div>
+      </div>
+    </ErrorBoundary>
   );
 }

@@ -2,6 +2,7 @@
 
 import { ArrowDown, ArrowUp, ArrowUpDown, ChevronDown, TrendingUp } from 'lucide-react';
 import { ChartType, DiscussionSortBy, SortOrder, StockData, StockPrice } from '../types';
+import { DiscussionCardSkeleton, PriceDisplaySkeleton } from './SkeletonLoader';
 
 interface StockDetailsProps {
   selectedStock: StockData | null;
@@ -64,32 +65,31 @@ export default function StockDetails({
 
         {/* Stock Price Display */}
         <div className="mb-4">
-          <div className="bg-gray-700 rounded-lg p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <div className="text-sm text-gray-400">Current Price</div>
-                <div className="text-2xl font-bold text-white flex items-center">
-                  {priceLoading ? (
-                    <>
-                      <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-white mr-3"></div>
-                      Loading...
-                    </>
-                  ) : stockPrice ? (
-                    stockPrice.price === 'N/A' ? 'Price N/A' : 
-                    stockPrice.price === 'Error' ? 'Price Error' : 
-                    `$${stockPrice.price}`
-                  ) : (
-                    'Loading...'
+          {priceLoading ? (
+            <PriceDisplaySkeleton />
+          ) : (
+            <div className="bg-gray-700 rounded-lg p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="text-sm text-gray-400">Current Price</div>
+                  <div className="text-2xl font-bold text-white flex items-center">
+                    {stockPrice ? (
+                      stockPrice.price === 'N/A' ? 'Price N/A' : 
+                      stockPrice.price === 'Error' ? 'Price Error' : 
+                      `$${stockPrice.price}`
+                    ) : (
+                      'Loading...'
+                    )}
+                  </div>
+                  {stockPrice && stockPrice.change !== 'N/A' && stockPrice.change !== 'Error' && (
+                    <div className={`text-sm ${parseFloat(stockPrice.change) >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                      {stockPrice.change >= 0 ? '+' : ''}{stockPrice.change} ({stockPrice.changePercent}%)
+                    </div>
                   )}
                 </div>
-                {!priceLoading && stockPrice && stockPrice.change !== 'N/A' && stockPrice.change !== 'Error' && (
-                  <div className={`text-sm ${parseFloat(stockPrice.change) >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                    {stockPrice.change >= 0 ? '+' : ''}{stockPrice.change} ({stockPrice.changePercent}%)
-                  </div>
-                )}
               </div>
             </div>
-          </div>
+          )}
         </div>
 
         {/* Stock Price Chart */}
@@ -194,26 +194,33 @@ export default function StockDetails({
             </div>
           </div>
           <div className="space-y-3 overflow-y-auto pr-2" style={{ height: '1200px' }}>
-            {getSortedDiscussions().map((post, index) => (
-              <a 
-                key={index} 
-                href={`https://www.reddit.com${post.permalink}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="block bg-gray-700 rounded-lg p-4 hover:bg-gray-600 transition-colors cursor-pointer"
-              >
-                <div className="flex items-start justify-between mb-2">
-                  <h4 className="font-medium text-sm line-clamp-2 text-white hover:text-blue-300 transition-colors">{post.title}</h4>
-                  <span className="text-xs text-gray-400 ml-2 flex-shrink-0">
-                    {post.score} ↑
-                  </span>
-                </div>
-                <div className="flex items-center justify-between text-xs text-gray-400">
-                  <span>r/{post.subreddit}</span>
-                  <span>Published: {new Date(post.created_utc * 1000).toLocaleDateString()}</span>
-                </div>
-              </a>
-            ))}
+            {getSortedDiscussions().length === 0 ? (
+              // Show skeleton loaders when no discussions
+              Array.from({ length: 5 }).map((_, index) => (
+                <DiscussionCardSkeleton key={index} />
+              ))
+            ) : (
+              getSortedDiscussions().map((post, index) => (
+                <a 
+                  key={index} 
+                  href={`https://www.reddit.com${post.permalink}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="block bg-gray-700 rounded-lg p-4 hover:bg-gray-600 transition-colors cursor-pointer"
+                >
+                  <div className="flex items-start justify-between mb-2">
+                    <h4 className="font-medium text-sm line-clamp-2 text-white hover:text-blue-300 transition-colors">{post.title}</h4>
+                    <span className="text-xs text-gray-400 ml-2 flex-shrink-0">
+                      {post.score} ↑
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between text-xs text-gray-400">
+                    <span>r/{post.subreddit}</span>
+                    <span>Published: {new Date(post.created_utc * 1000).toLocaleDateString()}</span>
+                  </div>
+                </a>
+              ))
+            )}
           </div>
         </div>
       </div>
