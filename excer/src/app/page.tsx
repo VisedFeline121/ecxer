@@ -1,25 +1,11 @@
 'use client';
 
-import { ArrowDown, ArrowUp, ArrowUpDown, ChevronDown, MessageCircle, TrendingDown, TrendingUp, Users } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
-
-interface StockData {
-  symbol: string;
-  mentions: number;
-  uniquePosts: number;
-  positiveMentions: number;
-  negativeMentions: number;
-  sentimentScore: number;
-  posts: Array<{
-    id: string;
-    title: string;
-    score: number;
-    subreddit: string;
-    permalink: string;
-    author: string;
-  }>;
-  lastUpdated: number;
-}
+import Footer from '../components/Footer';
+import Header from '../components/Header';
+import StockDetails from '../components/StockDetails';
+import TrendingStocks from '../components/TrendingStocks';
+import { ChartType, DiscussionSortBy, SortBy, SortOrder, StockData, StockPrice } from '../types';
 
 export default function Home() {
   const [stocks, setStocks] = useState<StockData[]>([]);
@@ -30,14 +16,14 @@ export default function Home() {
   const [currentTime, setCurrentTime] = useState<number>(Date.now());
   const [refreshing, setRefreshing] = useState<boolean>(false);
   const [marketTimer, setMarketTimer] = useState<string>('Calculating...');
-  const [chartType, setChartType] = useState<'area' | 'candles'>('area');
-  const [stockPrice, setStockPrice] = useState<{price: string, change: string, changePercent: string} | null>(null);
+  const [chartType, setChartType] = useState<ChartType>('area');
+  const [stockPrice, setStockPrice] = useState<StockPrice | null>(null);
   const [priceLoading, setPriceLoading] = useState(false);
-  const [sortBy, setSortBy] = useState<'posts' | 'sentiment' | 'mentions'>('posts');
-  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
+  const [sortBy, setSortBy] = useState<SortBy>('posts');
+  const [sortOrder, setSortOrder] = useState<SortOrder>('desc');
   const [showSortMenu, setShowSortMenu] = useState(false);
-  const [discussionSortBy, setDiscussionSortBy] = useState<'date' | 'upvotes'>('date');
-  const [discussionSortOrder, setDiscussionSortOrder] = useState<'asc' | 'desc'>('desc');
+  const [discussionSortBy, setDiscussionSortBy] = useState<DiscussionSortBy>('date');
+  const [discussionSortOrder, setDiscussionSortOrder] = useState<SortOrder>('desc');
   const [showDiscussionSortMenu, setShowDiscussionSortMenu] = useState(false);
   const widgetRef = useRef<any>(null);
 
@@ -262,7 +248,7 @@ export default function Home() {
       
       // Update selected stock with fresh data
       if (selectedStock && newStocks.length > 0) {
-        const updatedStock = newStocks.find(s => s.symbol === selectedStock.symbol);
+        const updatedStock = newStocks.find((s: StockData) => s.symbol === selectedStock.symbol);
         if (updatedStock) {
           setSelectedStock(updatedStock);
         }
@@ -427,7 +413,7 @@ export default function Home() {
     return sorted;
   };
 
-  const handleSort = (newSortBy: 'posts' | 'sentiment' | 'mentions') => {
+  const handleSort = (newSortBy: SortBy) => {
     if (sortBy === newSortBy) {
       setSortOrder(sortOrder === 'desc' ? 'asc' : 'desc');
     } else {
@@ -477,7 +463,7 @@ export default function Home() {
     return sorted;
   };
 
-  const handleDiscussionSort = (newSortBy: 'date' | 'upvotes') => {
+  const handleDiscussionSort = (newSortBy: DiscussionSortBy) => {
     if (discussionSortBy === newSortBy) {
       setDiscussionSortOrder(discussionSortOrder === 'desc' ? 'asc' : 'desc');
     } else {
@@ -509,337 +495,50 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-gray-900 text-white">
-      {/* Header */}
-      <header className="border-b border-gray-800 p-6">
-        <div className="max-w-7xl mx-auto flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-white">Excer</h1>
-            <p className="text-gray-400 text-sm">Penny Stock Sentiment Tracker</p>
-          </div>
-          <div className="text-center flex-1 mx-12">
-            <div className="text-sm text-white font-medium">{marketTimer}</div>
-          </div>
-          <div className="text-right">
-            <div className="flex gap-6">
-              <div>
-                <div className="text-sm text-gray-400">Last updated</div>
-                <div className="text-sm text-white">{formatTimeAgo(lastUpdated)}</div>
-              </div>
-              <div>
-                <div className="text-sm text-gray-400">Time to next update</div>
-                <div className="text-sm text-white flex items-center gap-1">
-                  {refreshing && <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>}
-                  {formatTimeToNext(nextUpdate)}
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </header>
+      <Header 
+        marketTimer={marketTimer}
+        lastUpdated={lastUpdated}
+        nextUpdate={nextUpdate}
+        refreshing={refreshing}
+        formatTimeAgo={formatTimeAgo}
+        formatTimeToNext={formatTimeToNext}
+      />
 
       <div className="max-w-7xl mx-auto p-6">
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-stretch">
-          {/* Left Panel - Trending Stocks */}
-          <div className="lg:col-span-1 flex">
-            <div className="bg-gray-800 rounded-lg p-6 w-full flex flex-col">
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-xl font-semibold flex items-center">
-                  <TrendingUp className="w-5 h-5 mr-2" />
-                  Trending Stocks ({stocks.length})
-                </h2>
-                <div className="relative">
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => setShowSortMenu(!showSortMenu)}
-                      className="flex items-center gap-2 px-3 py-1 rounded text-sm bg-gray-700 text-gray-300 hover:bg-gray-600 transition-colors"
-                    >
-                      <ArrowUpDown className="w-4 h-4" />
-                      <span>{getSortLabel()}</span>
-                      <ChevronDown className="w-3 h-3" />
-                    </button>
-                    <button
-                      onClick={toggleSortOrder}
-                      className="p-1 rounded bg-gray-700 text-gray-300 hover:bg-gray-600 transition-colors"
-                      title={sortOrder === 'desc' ? 'Most to least' : 'Least to most'}
-                    >
-                      {sortOrder === 'desc' ? (
-                        <ArrowUp className="w-4 h-4" />
-                      ) : (
-                        <ArrowDown className="w-4 h-4" />
-                      )}
-                    </button>
-                  </div>
-                  
-                  {showSortMenu && (
-                    <div className="absolute right-0 top-full mt-1 w-32 bg-gray-700 rounded-lg shadow-lg border border-gray-600 z-10">
-                      <button
-                        onClick={() => handleSort('posts')}
-                        className={`w-full px-3 py-2 text-left text-sm rounded-t-lg transition-colors ${
-                          sortBy === 'posts' 
-                            ? 'bg-blue-600 text-white' 
-                            : 'text-gray-300 hover:bg-gray-600'
-                        }`}
-                      >
-                        Posts
-                      </button>
-                      <button
-                        onClick={() => handleSort('sentiment')}
-                        className={`w-full px-3 py-2 text-left text-sm transition-colors ${
-                          sortBy === 'sentiment' 
-                            ? 'bg-blue-600 text-white' 
-                            : 'text-gray-300 hover:bg-gray-600'
-                        }`}
-                      >
-                        Sentiment
-                      </button>
-                      <button
-                        onClick={() => handleSort('mentions')}
-                        className={`w-full px-3 py-2 text-left text-sm rounded-b-lg transition-colors ${
-                          sortBy === 'mentions' 
-                            ? 'bg-blue-600 text-white' 
-                            : 'text-gray-300 hover:bg-gray-600'
-                        }`}
-                      >
-                        Mentions
-                      </button>
-                    </div>
-                  )}
-                </div>
-              </div>
-              
-              <div className="flex-1 overflow-y-auto space-y-3 pr-2">
-                {getSortedStocks().map((stock) => (
-                  <div
-                    key={stock.symbol}
-                    onClick={() => setSelectedStock(stock)}
-                    className={`p-4 rounded-lg cursor-pointer transition-colors ${
-                      selectedStock?.symbol === stock.symbol
-                        ? 'bg-blue-600'
-                        : 'bg-gray-700 hover:bg-gray-600'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="font-bold text-lg">${stock.symbol}</span>
-                      <div className="flex items-center">
-                        {stock.sentimentScore > 0 ? (
-                          <TrendingUp className="w-4 h-4 text-green-400" />
-                        ) : (
-                          <TrendingDown className="w-4 h-4 text-red-400" />
-                        )}
-                        <span className={`ml-1 text-sm ${
-                          stock.sentimentScore > 0 ? 'text-green-400' : 'text-red-400'
-                        }`}>
-                          {stock.sentimentScore > 0 ? '+' : ''}{stock.sentimentScore.toFixed(2)}
-                        </span>
-                      </div>
-                    </div>
-                    
-                    <div className="flex items-center justify-between text-sm text-gray-300">
-                      <span className="flex items-center">
-                        <MessageCircle className="w-4 h-4 mr-1" />
-                        {stock.uniquePosts} posts
-                      </span>
-                      <span className="flex items-center">
-                        <Users className="w-4 h-4 mr-1" />
-                        {stock.positiveMentions}↑ {stock.negativeMentions}↓
-                      </span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
+          <TrendingStocks
+            stocks={stocks}
+            selectedStock={selectedStock}
+            sortBy={sortBy}
+            sortOrder={sortOrder}
+            showSortMenu={showSortMenu}
+            onStockSelect={setSelectedStock}
+            onSortChange={handleSort}
+            onSortOrderToggle={toggleSortOrder}
+            onSortMenuToggle={() => setShowSortMenu(!showSortMenu)}
+            getSortedStocks={getSortedStocks}
+            getSortLabel={getSortLabel}
+          />
 
-          {/* Right Panel - Stock Details */}
-          <div className="lg:col-span-2 flex">
-            {selectedStock ? (
-              <div className="bg-gray-800 rounded-lg p-6 w-full flex flex-col">
-                <div className="flex items-center justify-between mb-6">
-                  <h2 className="text-2xl font-bold">${selectedStock.symbol}</h2>
-                  <div className="text-right">
-                    <div className="text-sm text-gray-400">Sentiment Score</div>
-                    <div className={`text-xl font-bold ${
-                      selectedStock.sentimentScore > 0 ? 'text-green-400' : 'text-red-400'
-                    }`}>
-                      {selectedStock.sentimentScore > 0 ? '+' : ''}{selectedStock.sentimentScore.toFixed(2)}
-                    </div>
-                  </div>
-                </div>
-
-                {/* Stock Price Display */}
-                <div className="mb-4">
-                  <div className="bg-gray-700 rounded-lg p-4">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <div className="text-sm text-gray-400">Current Price</div>
-                        <div className="text-2xl font-bold text-white flex items-center">
-                          {priceLoading ? (
-                            <>
-                              <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-white mr-3"></div>
-                              Loading...
-                            </>
-                          ) : stockPrice ? (
-                            stockPrice.price === 'N/A' ? 'Price N/A' : 
-                            stockPrice.price === 'Error' ? 'Price Error' : 
-                            `$${stockPrice.price}`
-                          ) : (
-                            'Loading...'
-                          )}
-                        </div>
-                        {!priceLoading && stockPrice && stockPrice.change !== 'N/A' && stockPrice.change !== 'Error' && (
-                          <div className={`text-sm ${parseFloat(stockPrice.change) >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                            {stockPrice.change >= 0 ? '+' : ''}{stockPrice.change} ({stockPrice.changePercent}%)
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Stock Price Chart */}
-                <div className="mb-6">
-                  <div className="flex items-center justify-between mb-4">
-                    <h3 className="text-lg font-semibold">Price Chart</h3>
-                    <div className="flex space-x-2">
-                      <button 
-                        onClick={() => setChartType('area')}
-                        className={`px-3 py-1 text-xs rounded ${
-                          chartType === 'area' 
-                            ? 'bg-blue-600 text-white' 
-                            : 'bg-gray-600 text-gray-300 hover:bg-gray-500'
-                        }`}
-                      >
-                        Area
-                      </button>
-                      <button 
-                        onClick={() => setChartType('candles')}
-                        className={`px-3 py-1 text-xs rounded ${
-                          chartType === 'candles' 
-                            ? 'bg-blue-600 text-white' 
-                            : 'bg-gray-600 text-gray-300 hover:bg-gray-500'
-                        }`}
-                      >
-                        Candles
-                      </button>
-                    </div>
-                  </div>
-                  <div className="bg-gray-700 rounded-lg p-4">
-                    <div 
-                      id={`tradingview_${selectedStock.symbol}`}
-                      className="w-full h-96"
-                    />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-3 gap-4 mb-6">
-                  <div className="bg-gray-700 rounded-lg p-4 text-center">
-                    <div className="text-2xl font-bold text-blue-400">{selectedStock.uniquePosts}</div>
-                    <div className="text-sm text-gray-400">Unique Posts</div>
-                  </div>
-                  <div className="bg-gray-700 rounded-lg p-4 text-center">
-                    <div className="text-2xl font-bold text-green-400">{selectedStock.positiveMentions}</div>
-                    <div className="text-sm text-gray-400">Bullish</div>
-                  </div>
-                  <div className="bg-gray-700 rounded-lg p-4 text-center">
-                    <div className="text-2xl font-bold text-red-400">{selectedStock.negativeMentions}</div>
-                    <div className="text-sm text-gray-400">Bearish</div>
-                  </div>
-                </div>
-
-                <div className="flex flex-col">
-                  <div className="flex items-center justify-between mb-4">
-                    <h3 className="text-lg font-semibold">Recent Discussions</h3>
-                    <div className="flex items-center space-x-2">
-                      <div className="relative">
-                        <button
-                          onClick={() => setShowDiscussionSortMenu(!showDiscussionSortMenu)}
-                          className="flex items-center space-x-1 px-3 py-1 bg-gray-700 text-gray-300 rounded-lg hover:bg-gray-600 transition-colors text-sm"
-                        >
-                          <ArrowUpDown className="w-4 h-4" />
-                          <span>{getDiscussionSortLabel()}</span>
-                          <ChevronDown className="w-3 h-3" />
-                        </button>
-                        {showDiscussionSortMenu && (
-                          <div className="absolute right-0 top-full mt-1 w-32 bg-gray-700 rounded-lg shadow-lg border border-gray-600 z-10">
-                            <button
-                              onClick={() => handleDiscussionSort('date')}
-                              className={`w-full px-3 py-2 text-left text-sm rounded-t-lg transition-colors ${
-                                discussionSortBy === 'date' 
-                                  ? 'bg-blue-600 text-white' 
-                                  : 'text-gray-300 hover:bg-gray-600'
-                              }`}
-                            >
-                              Date
-                            </button>
-                            <button
-                              onClick={() => handleDiscussionSort('upvotes')}
-                              className={`w-full px-3 py-2 text-left text-sm rounded-b-lg transition-colors ${
-                                discussionSortBy === 'upvotes' 
-                                  ? 'bg-blue-600 text-white' 
-                                  : 'text-gray-300 hover:bg-gray-600'
-                              }`}
-                            >
-                              Upvotes
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                      <button
-                        onClick={toggleDiscussionSortOrder}
-                        className="p-1 rounded bg-gray-700 text-gray-300 hover:bg-gray-600 transition-colors"
-                        title={discussionSortOrder === 'desc' ? 'Most to least' : 'Least to most'}
-                      >
-                        {discussionSortOrder === 'desc' ? (
-                          <ArrowDown className="w-4 h-4" />
-                        ) : (
-                          <ArrowUp className="w-4 h-4" />
-                        )}
-                      </button>
-                    </div>
-                  </div>
-                  <div className="space-y-3 overflow-y-auto pr-2" style={{ height: '1200px' }}>
-                    {getSortedDiscussions().map((post, index) => (
-                      <a 
-                        key={index} 
-                        href={`https://www.reddit.com${post.permalink}`}
-            target="_blank"
-            rel="noopener noreferrer"
-                        className="block bg-gray-700 rounded-lg p-4 hover:bg-gray-600 transition-colors cursor-pointer"
-                      >
-                        <div className="flex items-start justify-between mb-2">
-                          <h4 className="font-medium text-sm line-clamp-2 text-white hover:text-blue-300 transition-colors">{post.title}</h4>
-                          <span className="text-xs text-gray-400 ml-2 flex-shrink-0">
-                            {post.score} ↑
-                          </span>
-                        </div>
-                        <div className="flex items-center justify-between text-xs text-gray-400">
-                          <span>r/{post.subreddit}</span>
-                          <span>Published: {new Date(post.created_utc * 1000).toLocaleDateString()}</span>
-                        </div>
-                      </a>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <div className="bg-gray-800 rounded-lg p-6 flex items-center justify-center">
-                <div className="text-center text-gray-400">
-                  <TrendingUp className="w-12 h-12 mx-auto mb-4" />
-                  <p>Select a stock to view details</p>
-                </div>
-              </div>
-            )}
-          </div>
+          <StockDetails
+            selectedStock={selectedStock}
+            stockPrice={stockPrice}
+            priceLoading={priceLoading}
+            chartType={chartType}
+            discussionSortBy={discussionSortBy}
+            discussionSortOrder={discussionSortOrder}
+            showDiscussionSortMenu={showDiscussionSortMenu}
+            onChartTypeChange={setChartType}
+            onDiscussionSortChange={handleDiscussionSort}
+            onDiscussionSortOrderToggle={toggleDiscussionSortOrder}
+            onDiscussionSortMenuToggle={() => setShowDiscussionSortMenu(!showDiscussionSortMenu)}
+            getSortedDiscussions={getSortedDiscussions}
+            getDiscussionSortLabel={getDiscussionSortLabel}
+          />
         </div>
       </div>
 
-      {/* Footer */}
-      <footer className="border-t border-gray-800 p-6 mt-12">
-        <div className="max-w-7xl mx-auto text-center text-gray-400 text-sm">
-          <p>Not financial advice. For entertainment and research purposes only.</p>
-          <p className="mt-2">Data from Reddit • Updates every 15 minutes</p>
-        </div>
-      </footer>
+      <Footer />
     </div>
   );
 }
