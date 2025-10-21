@@ -31,7 +31,7 @@ export default function TrendingStocks({
   getSortLabel
 }: TrendingStocksProps) {
   return (
-    <div className="lg:col-span-1 flex">
+    <div className="hidden lg:flex lg:col-span-1">
       <div className="bg-gray-800 rounded-lg p-6 w-full flex flex-col">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-xl font-semibold flex items-center">

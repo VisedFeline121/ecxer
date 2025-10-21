@@ -36,7 +36,7 @@ export default function StockDetails({
 }: StockDetailsProps) {
   if (!selectedStock) {
     return (
-      <div className="lg:col-span-2 flex">
+      <div className="col-span-1 lg:col-span-2 flex">
         <div className="bg-gray-800 rounded-lg p-6 flex items-center justify-center">
           <div className="text-center text-gray-400">
             <TrendingUp className="w-12 h-12 mx-auto mb-4" />
@@ -48,7 +48,7 @@ export default function StockDetails({
   }
 
   return (
-    <div className="lg:col-span-2 flex">
+    <div className="col-span-1 lg:col-span-2 flex">
       <div className="bg-gray-800 rounded-lg p-6 w-full flex flex-col">
         <div className="flex items-center justify-between mb-6">
           <h2 className="text-2xl font-bold">${selectedStock.symbol}</h2>

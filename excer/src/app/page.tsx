@@ -1,8 +1,10 @@
 'use client';
 
+import { Menu } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import Footer from '../components/Footer';
 import Header from '../components/Header';
+import MobileTrendingStocks from '../components/MobileTrendingStocks';
 import StockDetails from '../components/StockDetails';
 import TrendingStocks from '../components/TrendingStocks';
 import { ChartType, DiscussionSortBy, SortBy, SortOrder, StockData, StockPrice } from '../types';
@@ -25,6 +27,7 @@ export default function Home() {
   const [discussionSortBy, setDiscussionSortBy] = useState<DiscussionSortBy>('date');
   const [discussionSortOrder, setDiscussionSortOrder] = useState<SortOrder>('desc');
   const [showDiscussionSortMenu, setShowDiscussionSortMenu] = useState(false);
+  const [showMobileTrendingStocks, setShowMobileTrendingStocks] = useState(false);
   const widgetRef = useRef<any>(null);
 
   useEffect(() => {
@@ -505,6 +508,17 @@ export default function Home() {
       />
 
       <div className="max-w-7xl mx-auto p-6">
+        {/* Mobile Trending Stocks Button */}
+        <div className="lg:hidden mb-4">
+          <button
+            onClick={() => setShowMobileTrendingStocks(true)}
+            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+          >
+            <Menu className="w-5 h-5" />
+            <span>Trending Stocks ({stocks.length})</span>
+          </button>
+        </div>
+
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-stretch">
           <TrendingStocks
             stocks={stocks}
@@ -537,6 +551,23 @@ export default function Home() {
           />
         </div>
       </div>
+
+      {/* Mobile Trending Stocks Popup */}
+      <MobileTrendingStocks
+        isOpen={showMobileTrendingStocks}
+        stocks={stocks}
+        selectedStock={selectedStock}
+        sortBy={sortBy}
+        sortOrder={sortOrder}
+        showSortMenu={showSortMenu}
+        onClose={() => setShowMobileTrendingStocks(false)}
+        onStockSelect={setSelectedStock}
+        onSortChange={handleSort}
+        onSortOrderToggle={toggleSortOrder}
+        onSortMenuToggle={() => setShowSortMenu(!showSortMenu)}
+        getSortedStocks={getSortedStocks}
+        getSortLabel={getSortLabel}
+      />
 
       <Footer />
     </div>
