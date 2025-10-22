@@ -376,36 +376,53 @@ export default function Home() {
     // Calculate what day of week it is in NY
     const nyDayOfWeek = new Date(nyDate.year, nyDate.month - 1, nyDate.day).getDay();
 
-    // Determine target date for next 9:30 AM NY time
-    let targetYear = nyDate.year;
-    let targetMonth = nyDate.month;
-    let targetDay = nyDate.day;
-    
-    // If we're past 9:30 AM today, move to tomorrow
-    if (nyDate.hour > 9 || (nyDate.hour === 9 && nyDate.minute >= 30)) {
-      targetDay += 1;
+    // Check if it's a weekday (Monday = 1, Friday = 5)
+    const isWeekday = nyDayOfWeek >= 1 && nyDayOfWeek <= 5;
+
+    // Check if market is currently open (9:30 AM - 4:00 PM ET on weekdays)
+    const isMarketOpen = isWeekday && 
+      ((nyDate.hour > 9) || (nyDate.hour === 9 && nyDate.minute >= 30)) &&
+      ((nyDate.hour < 16) || (nyDate.hour === 16 && nyDate.minute === 0));
+
+    if (isMarketOpen) {
+      // Market is open, show time until close (4:00 PM ET)
+      const targetUTC = new Date(Date.UTC(
+        nyDate.year,
+        nyDate.month - 1,
+        nyDate.day,
+        20, // 4:00 PM ET = 20:00 UTC (during EDT)
+        0
+      ));
+      
+      return { time: targetUTC.getTime(), isOpening: false };
+    } else {
+      // Market is closed, show time until next open (9:30 AM ET)
+      let targetYear = nyDate.year;
+      let targetMonth = nyDate.month;
+      let targetDay = nyDate.day;
+      
+      // If we're past 4:00 PM today or it's weekend, move to next trading day
+      if (nyDate.hour >= 16 || !isWeekday) {
+        targetDay += 1;
+      }
+
+      // Skip weekends - if target is weekend, move to Monday
+      let targetDate = new Date(targetYear, targetMonth - 1, targetDay);
+      while (targetDate.getDay() === 0 || targetDate.getDay() === 6) {
+        targetDate.setDate(targetDate.getDate() + 1);
+      }
+
+      // Create a UTC date string for 9:30 AM on the target date
+      const targetUTC = new Date(Date.UTC(
+        targetDate.getFullYear(),
+        targetDate.getMonth(),
+        targetDate.getDate(),
+        13, // 9:30 AM ET = 13:30 UTC (during EDT)
+        30
+      ));
+
+      return { time: targetUTC.getTime(), isOpening: true };
     }
-
-    // Skip weekends - if target is weekend, move to Monday
-    let targetDate = new Date(targetYear, targetMonth - 1, targetDay);
-    while (targetDate.getDay() === 0 || targetDate.getDay() === 6) {
-      targetDate.setDate(targetDate.getDate() + 1);
-    }
-
-    // Create a UTC date string for 9:30 AM on the target date
-    const targetUTC = new Date(Date.UTC(
-      targetDate.getFullYear(),
-      targetDate.getMonth(),
-      targetDate.getDate(),
-      13, // 9:30 AM ET = 13:30 UTC (during EDT)
-      30
-    ));
-
-    // Get the target timestamp
-    const targetTimestamp = targetUTC.getTime();
-
-    
-    return { time: targetTimestamp, isOpening: true };
   };
 
   const formatMarketTimer = () => {

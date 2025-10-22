@@ -337,7 +337,8 @@ class RedditWorker {
             'EPS', 'P2E', 'PEG', 'ROI', 'ROE', 'ROA', 'IRR', 'NPV', 'DCF',
             'SEC', 'FDA', 'EPA', 'DOJ', 'FTC', 'IRS', 'IMF', 'FED',
             'AI', 'ML', 'AR', 'VR', 'IoT', 'SaaS', 'PaaS', 'IaaS',
-            'DD', 'TA', 'FA', 'SI', 'DCA', 'FOMO', 'FUD', 'ASDAQ', 'PRICE',
+            'DD', 'TA', 'FA', 'SI', 'DCA', 'FOMO', 'FUD', 'ASDAQ', 'PRICE', 'PVOTE', 'FULL', 
+            'POST', 'OCKED', 'WEEK', 'LLING', 'UEEZE', 'LINE', 'PANIC', 'VEGAN', 'CKING',
             // Tech/Business Common Words
               'API', 'SDK', 'UI', 'UX', 'QA', 'PM', 'HR', 'PR', 'IT', 'IS', 'TO', 'YOLO', 'TLDR',
               // Common Business Terms
