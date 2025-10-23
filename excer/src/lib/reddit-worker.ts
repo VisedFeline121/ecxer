@@ -11,7 +11,7 @@ const SUBREDDITS = [
 ];
 
 // Stock symbol regex pattern (2-5 letters, with optional $ prefix)
-const STOCK_SYMBOL_REGEX = /\$?([A-Z]{2,5})\b(?![\w\d])/g;
+const STOCK_SYMBOL_REGEX = /(?:^|\s|\$)([A-Z]{2,5})\b(?![\w\d])/g;
 
 // Sentiment keywords
 const POSITIVE_KEYWORDS = [
@@ -121,12 +121,12 @@ class RedditWorker {
           author: child.data.author
         }))
         // Sort by score and take top 3 relevant comments
-        .sort((a, b) => b.score - a.score)
+        .sort((a: any, b: any) => b.score - a.score)
         .slice(0, 3);
 
       console.log(`Found ${comments.length} comments for post`);
       return comments;
-    } catch (error) {
+    } catch (error: any) {
       console.error(`Error fetching comments:`, error);
       return [];
     }
@@ -142,7 +142,7 @@ class RedditWorker {
           timeout: 15000
         });
         return response;
-      } catch (error) {
+      } catch (error: any) {
         if (error.response?.status === 429) {
           console.log(`Rate limited, waiting ${delay/1000} seconds before retry ${i + 1}/${retries}...`);
           await new Promise(resolve => setTimeout(resolve, delay));
@@ -224,7 +224,7 @@ class RedditWorker {
       }
       
       return posts;
-    } catch (error) {
+    } catch (error: any) {
       console.error(`Error fetching from r/${subreddit}:`, error);
       if (error.response) {
         console.error(`Response status: ${error.response.status}`);
@@ -277,7 +277,7 @@ class RedditWorker {
       
       console.log(`Symbol ${symbol} NOT found on any major exchange`);
       return false;
-    } catch (error) {
+    } catch (error: any) {
       console.log(`Symbol validation failed for ${symbol}, assuming invalid:`, error.message);
       // If API fails, assume invalid to be more conservative
       return false;
@@ -306,8 +306,9 @@ class RedditWorker {
         // Only look for stock symbols in the title
         const title = post.title;
         
-        // Find potential stock symbols in title
-        const matches = title.match(STOCK_SYMBOL_REGEX) || [];
+        // Find potential stock symbols in title using the improved regex
+        const regexMatches = [...title.matchAll(STOCK_SYMBOL_REGEX)];
+        const matches = regexMatches.map(match => match[1]); // Extract the captured group
         
         // Also look for common stock mention patterns in title
         const tickerMatches = title.toLowerCase().match(/\$[a-z]{2,5}\b/g) || [];  // $ticker
@@ -338,14 +339,16 @@ class RedditWorker {
             'SEC', 'FDA', 'EPA', 'DOJ', 'FTC', 'IRS', 'IMF', 'FED',
             'AI', 'ML', 'AR', 'VR', 'IoT', 'SaaS', 'PaaS', 'IaaS',
             'DD', 'TA', 'FA', 'SI', 'DCA', 'FOMO', 'FUD', 'ASDAQ', 'PRICE', 'PVOTE', 'FULL', 
-            'POST', 'OCKED', 'WEEK', 'LLING', 'UEEZE', 'LINE', 'PANIC', 'VEGAN', 'CKING',
+            'POST', 'OCKED', 'WEEK', 'LLING', 'UEEZE', 'LINE', 'PANIC', 'VEGAN', 'CKING', 'EYOND', 
+            'ARKET', 'STILL', 'HODL', 'COUNT', 'READ', 'LIFE', 'SHO', 'LDERS', 'TRONG', 'PENED',
             // Tech/Business Common Words
               'API', 'SDK', 'UI', 'UX', 'QA', 'PM', 'HR', 'PR', 'IT', 'IS', 'TO', 'YOLO', 'TLDR',
               // Common Business Terms
               'INC', 'LLC', 'LTD', 'CORP', 'CO', 'HOLDINGS', 'GROUP', 'INTL', 'TECH', 'GAAP',
               'YTD', 'EOD', 'ROW', 'QTD', 'MTD', 'FY', 'CY', 'EST', 'PDT', 'GMT',
               'PURE', 'WORTH', 'HAVE', 'WITH', 'INESS', 'HIVE', 'NEXT', 'LAST', 'BEST',
-              'FREE', 'PAID', 'CALL', 'PUT', 'BID', 'ASK', 'NET', 'GROSS', 'TOTAL',
+              'FREE', 'PAID', 'CALL', 'PUT', 'BID', 'ASK', 'NET', 'GROSS', 'TOTAL', 'CHAT', 'CROWD',
+              'BACK', 'ONLY', 'KNOW', 'WHY', 'APES',
             // Common Prepositions/Articles/Conjunctions
             'IN', 'ON', 'AT', 'BY', 'OF', 'OR', 'AN', 'AS', 'BE', 'DO', 'IF', 'SO', 'UP', 'VS',
             // Common Verbs
@@ -412,12 +415,12 @@ class RedditWorker {
           stockData[symbol].posts.push(post);
           
           // Calculate sentiment for text
-          const analyzeText = (text: string) => {
+          const analyzeText = (text: string): { sentiment: 'positive' | 'negative' | 'neutral', positiveCount: number, negativeCount: number } => {
             const positiveCount = POSITIVE_KEYWORDS.filter(keyword => text.includes(keyword)).length;
             const negativeCount = NEGATIVE_KEYWORDS.filter(keyword => text.includes(keyword)).length;
             return {
-              sentiment: positiveCount > negativeCount ? 'positive' : 
-                        negativeCount > positiveCount ? 'negative' : 'neutral',
+              sentiment: positiveCount > negativeCount ? 'positive' as const : 
+                        negativeCount > positiveCount ? 'negative' as const : 'neutral' as const,
               positiveCount,
               negativeCount
             };
