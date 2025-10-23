@@ -13,6 +13,21 @@ import TrendingStocks from '../components/TrendingStocks';
 import { isAPIError, isNetworkError, useErrorHandler } from '../hooks/useErrorHandler';
 import { ChartType, DiscussionSortBy, SortBy, SortOrder, StockData, StockPrice } from '../types';
 
+// TradingView types
+interface TradingViewWidget {
+  remove(): void;
+}
+
+interface TradingView {
+  widget: new (config: any) => TradingViewWidget;
+}
+
+declare global {
+  interface Window {
+    TradingView?: TradingView;
+  }
+}
+
 export default function Home() {
   const [stocks, setStocks] = useState<StockData[]>([]);
   const [selectedStock, setSelectedStock] = useState<StockData | null>(null);
@@ -142,7 +157,7 @@ export default function Home() {
 
   // Initialize TradingView chart when selectedStock changes
   useEffect(() => {
-    if (selectedStock && (window as any).TradingView) {
+    if (selectedStock && window.TradingView) {
       const containerId = `tradingview_${selectedStock.symbol}`;
       
       // Remove existing widget if it exists
@@ -160,7 +175,7 @@ export default function Home() {
           const symbol = exchange ? `${exchange}${selectedStock.symbol}` : selectedStock.symbol;
           console.log(`Trying TradingView symbol: ${symbol}`);
           
-          widgetRef.current = new (window as any).TradingView.widget({
+          widgetRef.current = new window.TradingView!.widget({
             container_id: containerId,
             width: '100%',
             height: 400,
@@ -271,7 +286,7 @@ export default function Home() {
       });
       
       // Validate and sanitize data
-      const newStocks = Array.isArray(data.stocks) ? data.stocks.filter(stock => 
+      const newStocks = Array.isArray(data.stocks) ? data.stocks.filter((stock: any) => 
         stock && 
         typeof stock.symbol === 'string' && 
         stock.symbol.length > 0 &&
@@ -397,9 +412,9 @@ export default function Home() {
       return { time: targetUTC.getTime(), isOpening: false };
     } else {
       // Market is closed, show time until next open (9:30 AM ET)
-      let targetYear = nyDate.year;
-      let targetMonth = nyDate.month;
-      let targetDay = nyDate.day;
+    const targetYear = nyDate.year;
+    const targetMonth = nyDate.month;
+    let targetDay = nyDate.day;
       
       // If we're past 4:00 PM today or it's weekend, move to next trading day
       if (nyDate.hour >= 16 || !isWeekday) {
@@ -407,7 +422,7 @@ export default function Home() {
       }
 
       // Skip weekends - if target is weekend, move to Monday
-      let targetDate = new Date(targetYear, targetMonth - 1, targetDay);
+      const targetDate = new Date(targetYear, targetMonth - 1, targetDay);
       while (targetDate.getDay() === 0 || targetDate.getDay() === 6) {
         targetDate.setDate(targetDate.getDate() + 1);
       }

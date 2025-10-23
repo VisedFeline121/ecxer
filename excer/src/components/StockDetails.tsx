@@ -83,7 +83,7 @@ export default function StockDetails({
                   </div>
                   {stockPrice && stockPrice.change !== 'N/A' && stockPrice.change !== 'Error' && (
                     <div className={`text-sm ${parseFloat(stockPrice.change) >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                      {stockPrice.change >= 0 ? '+' : ''}{stockPrice.change} ({stockPrice.changePercent}%)
+                      {parseFloat(stockPrice.change) >= 0 ? '+' : ''}{stockPrice.change} ({stockPrice.changePercent}%)
                     </div>
                   )}
                 </div>

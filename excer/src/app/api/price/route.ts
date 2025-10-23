@@ -79,8 +79,8 @@ export async function GET(request: NextRequest) {
             lastUpdated: Date.now()
           });
         }
-      } catch (error) {
-        console.log(`API failed for ${symbol}:`, error.message);
+      } catch (error: unknown) {
+        console.log(`API failed for ${symbol}:`, error instanceof Error ? error.message : String(error));
         continue;
       }
     }
