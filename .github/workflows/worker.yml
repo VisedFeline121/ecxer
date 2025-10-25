@@ -35,4 +35,6 @@ jobs:
           KV_REST_API_TOKEN: ${{ secrets.KV_REST_API_TOKEN }}
           WORKER_SECRET: ${{ secrets.WORKER_SECRET }}
           VERCEL_APP_URL: ${{ secrets.VERCEL_APP_URL }}
+          REDDIT_CLIENT_ID: ${{ secrets.REDDIT_CLIENT_ID }}
+          REDDIT_CLIENT_SECRET: ${{ secrets.REDDIT_CLIENT_SECRET }}
         run: tsx scripts/github-worker.ts
