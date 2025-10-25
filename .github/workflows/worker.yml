@@ -23,9 +23,11 @@ jobs:
           node-version: '18'
           
       - name: Install dependencies
+        working-directory: ./excer
         run: npm install
         
       - name: Run worker
+        working-directory: ./excer
         env:
           KV_REST_API_URL: ${{ secrets.KV_REST_API_URL }}
           KV_REST_API_TOKEN: ${{ secrets.KV_REST_API_TOKEN }}
