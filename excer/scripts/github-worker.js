@@ -1,4 +1,4 @@
-import RedditWorker from '../src/lib/reddit-worker.js';
+import RedditWorker from '../src/lib/reddit-worker.ts';
 
 async function runWorker() {
   try {
