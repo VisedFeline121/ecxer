@@ -29,6 +29,32 @@ function cleanupConnection(controller: ReadableStreamDefaultController, keepAliv
   connectionAttempts.delete(clientId);
 }
 
+export async function POST(request: Request) {
+  try {
+    // Verify the request is authorized
+    const authHeader = request.headers.get('authorization');
+    const expectedAuth = `Bearer ${process.env.WORKER_SECRET}`;
+    
+    if (!authHeader || authHeader !== expectedAuth) {
+      return new NextResponse('Unauthorized', { status: 401 });
+    }
+
+    // Notify all connected clients
+    await notifyClients();
+    
+    return new NextResponse(JSON.stringify({ 
+      success: true, 
+      message: 'Clients notified',
+      activeConnections: connections.size 
+    }), {
+      headers: { 'Content-Type': 'application/json' }
+    });
+  } catch (error) {
+    console.error('Error in POST /api/updates:', error);
+    return new NextResponse('Internal Server Error', { status: 500 });
+  }
+}
+
 export async function GET() {
   const clientId = Date.now().toString();
   console.log(`[SSE] New connection attempt from client ${clientId}`);
