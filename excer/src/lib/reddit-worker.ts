@@ -1,6 +1,5 @@
 import axios from 'axios';
-import fs from 'fs/promises';
-import path from 'path';
+import { kvStore } from './kv';
 
 // Target subreddits for penny stock discussions
 const SUBREDDITS = [
@@ -75,10 +74,8 @@ interface WorkerData {
 }
 
 class RedditWorker {
-  private dataPath: string;
-
   constructor() {
-    this.dataPath = path.join(process.cwd(), 'data', 'stocks.json');
+    // No initialization needed for KV store
   }
 
   // Fetch posts from a subreddit
@@ -489,34 +486,30 @@ class RedditWorker {
     return stockData;
   }
 
-  // Save data to file
+  // Save data to KV store
   private async saveData(data: WorkerData): Promise<void> {
     try {
-      // Ensure data directory exists
-      const dataDir = path.dirname(this.dataPath);
-      await fs.mkdir(dataDir, { recursive: true });
-      
-      await fs.writeFile(this.dataPath, JSON.stringify(data, null, 2));
-      console.log('Data saved to file');
+      await kvStore.set('stocks', data);
+      console.log('Data saved to KV store');
     } catch (error) {
       console.error('Error saving data:', error);
+      throw error; // Re-throw to handle in worker
     }
   }
 
-  // Load data from file
+  // Load data from KV store
   public async loadData(): Promise<WorkerData | null> {
     try {
-      console.log('[Worker] Reading data file:', this.dataPath);
-      const data = await fs.readFile(this.dataPath, 'utf-8');
-      const parsed = JSON.parse(data);
+      console.log('[Worker] Reading from KV store');
+      const data = await kvStore.get('stocks');
       console.log('[Worker] Successfully loaded data:', {
-        stocksCount: parsed?.stocks?.length || 0,
-        lastUpdated: parsed?.lastUpdated ? new Date(parsed.lastUpdated).toISOString() : 'none',
-        firstStock: parsed?.stocks?.[0]?.symbol || 'none'
+        stocksCount: data?.stocks?.length || 0,
+        lastUpdated: data?.lastUpdated ? new Date(data.lastUpdated).toISOString() : 'none',
+        firstStock: data?.stocks?.[0]?.symbol || 'none'
       });
-      return parsed;
+      return data;
     } catch (error) {
-      console.log('[Worker] No existing data file found:', error);
+      console.log('[Worker] No existing data found:', error);
       return null;
     }
   }
