@@ -3,7 +3,13 @@ name: Reddit Worker
 on:
   schedule:
     - cron: '*/15 * * * *'  # Runs every 15 minutes
-  workflow_dispatch:  # Allows manual triggering
+  workflow_dispatch:
+    inputs:
+      debug:
+        description: 'Enable debug logging'
+        type: boolean
+        required: false
+        default: false
 
 jobs:
   run-worker:
@@ -17,11 +23,9 @@ jobs:
           node-version: '18'
           
       - name: Install dependencies
-        working-directory: ./excer
         run: npm install
         
       - name: Run worker
-        working-directory: ./excer
         env:
           KV_REST_API_URL: ${{ secrets.KV_REST_API_URL }}
           KV_REST_API_TOKEN: ${{ secrets.KV_REST_API_TOKEN }}
