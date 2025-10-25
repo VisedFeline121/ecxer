@@ -8,40 +8,86 @@ export const fetchCache = 'force-no-store';
 const encoder = new TextEncoder();
 const connections = new Set<ReadableStreamDefaultController>();
 
+// Keep track of connection attempts per client
+const connectionAttempts = new Map<string, number>();
+const MAX_RETRIES = 3;
+const KEEP_ALIVE_INTERVAL = 15000; // 15 seconds
+
+function getClientId(controller: ReadableStreamDefaultController): string {
+  return (controller as any).clientId || 'unknown';
+}
+
+function cleanupConnection(controller: ReadableStreamDefaultController, keepAliveInterval?: NodeJS.Timeout) {
+  const clientId = getClientId(controller);
+  console.log(`[SSE] Cleaning up connection for client ${clientId}`);
+  
+  if (keepAliveInterval) {
+    clearInterval(keepAliveInterval);
+  }
+  
+  connections.delete(controller);
+  connectionAttempts.delete(clientId);
+}
+
 export async function GET() {
+  const clientId = Date.now().toString();
+  console.log(`[SSE] New connection attempt from client ${clientId}`);
+
+  // Check retry count
+  const attempts = connectionAttempts.get(clientId) || 0;
+  if (attempts >= MAX_RETRIES) {
+    console.log(`[SSE] Client ${clientId} exceeded max retries`);
+    connectionAttempts.delete(clientId);
+    return new NextResponse(null, { status: 429 });
+  }
+
+  connectionAttempts.set(clientId, attempts + 1);
+
   const stream = new ReadableStream({
     start(controller) {
-      console.log('[SSE] New client connected');
+      (controller as any).clientId = clientId;
+      console.log(`[SSE] Client ${clientId} connected`);
       connections.add(controller);
       
-      // Send initial connection message
-      const initialMessage = encoder.encode(`data: ${JSON.stringify({ type: 'connected' })}\n\n`);
-      console.log('[SSE] Sending initial message:', initialMessage);
+      // Send initial connection message with retry instructions
+      const initialMessage = encoder.encode(
+        `retry: 1000\n` + // Tell client to wait 1 second before reconnecting
+        `data: ${JSON.stringify({ 
+          type: 'connected',
+          clientId,
+          message: 'Connection established. Will retry automatically if disconnected.'
+        })}\n\n`
+      );
+      console.log(`[SSE] Sending initial message to client ${clientId}`);
       controller.enqueue(initialMessage);
 
-      // Send keep-alive every 30 seconds to prevent timeout
+      // Send keep-alive more frequently
       const keepAliveInterval = setInterval(() => {
         try {
-          const keepAliveMessage = encoder.encode(`data: ${JSON.stringify({ type: 'keepalive', timestamp: Date.now() })}\n\n`);
+          const keepAliveMessage = encoder.encode(
+            `data: ${JSON.stringify({ 
+              type: 'keepalive',
+              clientId,
+              timestamp: Date.now()
+            })}\n\n`
+          );
           controller.enqueue(keepAliveMessage);
         } catch (error) {
-          console.log('[SSE] Keep-alive failed, connection likely closed');
-          clearInterval(keepAliveInterval);
-          connections.delete(controller);
+          console.log(`[SSE] Keep-alive failed for client ${clientId}, connection likely closed:`, error);
+          cleanupConnection(controller, keepAliveInterval);
         }
-      }, 30000);
+      }, KEEP_ALIVE_INTERVAL);
 
       // Return cleanup function
       return () => {
-        console.log('[SSE] Client disconnected (cleanup)');
-        clearInterval(keepAliveInterval);
-        connections.delete(controller);
+        console.log(`[SSE] Client ${clientId} disconnected (cleanup)`);
+        cleanupConnection(controller, keepAliveInterval);
       };
     },
     cancel(controller) {
-      // Connection was closed
-      console.log('[SSE] Client disconnected (cancel)');
-      connections.delete(controller);
+      const clientId = getClientId(controller);
+      console.log(`[SSE] Client ${clientId} disconnected (cancel)`);
+      cleanupConnection(controller);
     }
   });
 
@@ -53,31 +99,40 @@ export async function GET() {
       'Pragma': 'no-cache',
       'Expires': '0',
       'X-Accel-Buffering': 'no',
+      'Access-Control-Allow-Origin': '*', // Allow cross-origin requests
+      'Access-Control-Allow-Methods': 'GET',
+      'Access-Control-Allow-Headers': '*',
     },
   });
 }
 
 // Function to notify all clients
 export async function notifyClients() {
-  console.log('[SSE] Sending update to clients, active connections:', connections.size);
-  const message = encoder.encode(`data: ${JSON.stringify({ type: 'update', timestamp: Date.now() })}\n\n`);
-  console.log('[SSE] Update message:', message);
+  console.log(`[SSE] Sending update to clients, active connections: ${connections.size}`);
+  const message = encoder.encode(`data: ${JSON.stringify({ 
+    type: 'update',
+    timestamp: Date.now(),
+    activeConnections: connections.size
+  })}\n\n`);
+  
   const closedConnections = new Set<ReadableStreamDefaultController>();
 
   for (const client of connections) {
+    const clientId = getClientId(client);
     try {
-      console.log('[SSE] Sending to client...');
+      console.log(`[SSE] Sending update to client ${clientId}`);
       client.enqueue(message);
-      console.log('[SSE] Successfully sent to client');
+      console.log(`[SSE] Successfully sent update to client ${clientId}`);
     } catch (error) {
-      console.error('[SSE] Failed to send message:', error);
-      console.error('[SSE] Client state:', client);
+      console.error(`[SSE] Failed to send message to client ${clientId}:`, error);
       closedConnections.add(client);
     }
   }
 
   // Clean up closed connections
   closedConnections.forEach(client => {
-    connections.delete(client);
+    const clientId = getClientId(client);
+    console.log(`[SSE] Removing dead connection for client ${clientId}`);
+    cleanupConnection(client);
   });
 }

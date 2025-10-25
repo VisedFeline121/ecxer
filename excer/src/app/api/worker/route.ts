@@ -2,6 +2,37 @@ import RedditWorker from '@/lib/reddit-worker';
 import { NextRequest, NextResponse } from 'next/server';
 import { notifyClients } from '../updates/route';
 
+// Background worker function that runs independently
+async function runWorkerInBackground() {
+  try {
+    console.log('[Worker] Starting background process...');
+    const worker = new RedditWorker();
+    await worker.run();
+    
+    // Load the fresh data to verify it was written
+    console.log('[Worker] Verifying data was written...');
+    const data = await worker.loadData();
+    if (!data) {
+      console.error('[Worker] Failed to verify data was written');
+      throw new Error('Failed to verify data was written');
+    }
+    console.log('[Worker] Data verified:', {
+      stocksCount: data.stocks?.length || 0,
+      lastUpdated: new Date(data.lastUpdated).toISOString(),
+      firstStock: data.stocks?.[0]?.symbol,
+      dataSource: data.dataSource
+    });
+    
+    // Notify all connected clients that new data is available
+    console.log('[Worker] Notifying clients of new data...');
+    await notifyClients();
+    
+    console.log('[Worker] Background process completed successfully');
+  } catch (error) {
+    console.error('[Worker] Background process error:', error);
+  }
+}
+
 export async function POST(request: NextRequest) {
   try {
     // Check for worker secret to prevent unauthorized calls
@@ -15,37 +46,20 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const worker = new RedditWorker();
-    await worker.run();
+    // Start the worker in the background without awaiting
+    runWorkerInBackground().catch(console.error);
     
-    // Load the fresh data to verify it was written
-    console.log('[Worker] Verifying data was written...');
-    const data = await worker.loadData();
-    if (!data) {
-      console.error('[Worker] Failed to verify data was written');
-      throw new Error('Failed to verify data was written');
-    }
-    console.log('[Worker] Data verified:', {
-      stocksCount: data.stocks?.length || 0,
-      lastUpdated: new Date(data.lastUpdated).toISOString(),
-      firstStock: data.stocks?.[0]?.symbol,
-      dataSource: data.dataSource
-    });
-    
-    // Notify all connected clients that new data is available
-    console.log('[Worker] Notifying clients of new data...');
-    await notifyClients();
-    
+    // Respond immediately
     return NextResponse.json({
       success: true,
-      message: 'Worker completed successfully',
+      message: 'Worker started successfully',
       timestamp: new Date().toISOString()
     });
     
   } catch (error) {
     console.error('Worker API error:', error);
     return NextResponse.json(
-      { error: 'Worker failed' },
+      { error: 'Failed to start worker' },
       { status: 500 }
     );
   }
@@ -54,37 +68,20 @@ export async function POST(request: NextRequest) {
 // Allow GET for manual testing
 export async function GET() {
   try {
-    const worker = new RedditWorker();
-    await worker.run();
+    // Start the worker in the background without awaiting
+    runWorkerInBackground().catch(console.error);
     
-    // Load the fresh data to verify it was written
-    console.log('[Worker] Verifying data was written...');
-    const data = await worker.loadData();
-    if (!data) {
-      console.error('[Worker] Failed to verify data was written');
-      throw new Error('Failed to verify data was written');
-    }
-    console.log('[Worker] Data verified:', {
-      stocksCount: data.stocks?.length || 0,
-      lastUpdated: new Date(data.lastUpdated).toISOString(),
-      firstStock: data.stocks?.[0]?.symbol,
-      dataSource: data.dataSource
-    });
-    
-    // Notify all connected clients that new data is available
-    console.log('[Worker] Notifying clients of new data...');
-    await notifyClients();
-    
+    // Respond immediately
     return NextResponse.json({
       success: true,
-      message: 'Worker completed successfully',
+      message: 'Worker started successfully',
       timestamp: new Date().toISOString()
     });
     
   } catch (error) {
     console.error('Worker API error:', error);
     return NextResponse.json(
-      { error: 'Worker failed' },
+      { error: 'Failed to start worker' },
       { status: 500 }
     );
   }

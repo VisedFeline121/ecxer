@@ -54,47 +54,109 @@ export default function Home() {
     fetchStocks();
 
     // Set up SSE connection to get notified when worker updates data
-    let eventSource = new EventSource('/api/updates');
-    
-    eventSource.onmessage = (event) => {
-      console.log('[SSE] Event received:', event.data);
-      try {
-        const data = JSON.parse(event.data);
-        console.log('[SSE] Parsed data:', data);
-        if (data.type === 'update') {
-          console.log('[Worker] Finished, fetching new data...');
-          fetchStocks(true);
-        } else if (data.type === 'connected') {
-          console.log('[SSE] Connection established');
-        } else if (data.type === 'keepalive') {
-          console.log('[SSE] Keep-alive received');
-        } else {
-          console.log('[SSE] Unknown event type:', data.type);
-        }
-      } catch (error) {
-        console.error('[SSE] Error parsing event data:', error);
-      }
-    };
+    let eventSource: EventSource | null = null;
+    let reconnectTimeout: NodeJS.Timeout | null = null;
+    let reconnectAttempts = 0;
+    const MAX_RECONNECT_ATTEMPTS = 5;
+    const INITIAL_RECONNECT_DELAY = 1000;
+    const MAX_RECONNECT_DELAY = 30000;
 
-    eventSource.onerror = (error) => {
-      console.error('SSE connection error:', error);
-      handleError('Real-time updates connection lost. Server might be down.', 'network');
-      
-      // Try to reconnect after a delay
-      setTimeout(() => {
-        console.log('Attempting to reconnect SSE...');
+    function setupEventSource() {
+      if (eventSource) {
+        console.log('[SSE] Cleaning up existing connection');
         eventSource.close();
-        
-        // Create new connection with all handlers
-        const newEventSource = new EventSource('/api/updates');
-        newEventSource.onmessage = eventSource.onmessage;  // Copy over the message handler
-        newEventSource.onerror = eventSource.onerror;      // Copy over the error handler
-        eventSource = newEventSource;
-      }, 5000);
-    };
+        eventSource = null;
+      }
 
+      if (reconnectTimeout) {
+        clearTimeout(reconnectTimeout);
+        reconnectTimeout = null;
+      }
+
+      console.log('[SSE] Setting up new connection...');
+      eventSource = new EventSource('/api/updates');
+
+      eventSource.onmessage = (event) => {
+        console.log('[SSE] Event received:', event.data);
+        try {
+          const data = JSON.parse(event.data);
+          console.log('[SSE] Parsed data:', data);
+
+          if (data.type === 'update') {
+            console.log('[Worker] Finished, fetching new data...');
+            fetchStocks(true);
+            reconnectAttempts = 0; // Reset attempts on successful update
+          } else if (data.type === 'connected') {
+            console.log(`[SSE] Connection established (Client ID: ${data.clientId})`);
+            reconnectAttempts = 0; // Reset attempts on successful connection
+            clearError(); // Clear any previous connection errors
+          } else if (data.type === 'keepalive') {
+            console.log(`[SSE] Keep-alive received (Client ID: ${data.clientId})`);
+          } else {
+            console.log('[SSE] Unknown event type:', data.type);
+          }
+        } catch (error) {
+          console.error('[SSE] Error parsing event data:', error);
+        }
+      };
+
+      eventSource.onopen = () => {
+        console.log('[SSE] Connection opened');
+        reconnectAttempts = 0; // Reset attempts on successful open
+      };
+
+      eventSource.onerror = (error) => {
+        console.error('[SSE] Connection error:', error);
+        
+        if (eventSource?.readyState === EventSource.CLOSED) {
+          console.log('[SSE] Connection closed, attempting to reconnect...');
+          handleReconnect();
+        } else {
+          console.log('[SSE] Connection in error state:', eventSource?.readyState);
+        }
+      };
+    }
+
+    function handleReconnect() {
+      if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
+        console.log('[SSE] Max reconnection attempts reached');
+        handleError('Unable to establish real-time connection after multiple attempts. Please refresh the page.', 'network');
+        return;
+      }
+
+      if (eventSource) {
+        eventSource.close();
+        eventSource = null;
+      }
+
+      // Exponential backoff with max delay
+      const delay = Math.min(
+        INITIAL_RECONNECT_DELAY * Math.pow(2, reconnectAttempts),
+        MAX_RECONNECT_DELAY
+      );
+
+      console.log(`[SSE] Attempting to reconnect in ${delay}ms (attempt ${reconnectAttempts + 1}/${MAX_RECONNECT_ATTEMPTS})`);
+      
+      reconnectTimeout = setTimeout(() => {
+        reconnectAttempts++;
+        setupEventSource();
+      }, delay);
+    }
+
+    // Initial setup
+    setupEventSource();
+
+    // Cleanup function
     return () => {
-      eventSource.close();
+      console.log('[SSE] Cleaning up SSE connection');
+      if (eventSource) {
+        eventSource.close();
+        eventSource = null;
+      }
+      if (reconnectTimeout) {
+        clearTimeout(reconnectTimeout);
+        reconnectTimeout = null;
+      }
     };
   }, []);
 
