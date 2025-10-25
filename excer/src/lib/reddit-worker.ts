@@ -490,6 +490,10 @@ class RedditWorker {
   // Save data to KV store
   private async saveData(data: WorkerData): Promise<void> {
     try {
+      // Clear old data first to stay within memory limits
+      await kvStore.del('stocks');
+      
+      // Save new data
       await kvStore.set('stocks', data);
       console.log('Data saved to KV store');
     } catch (error) {

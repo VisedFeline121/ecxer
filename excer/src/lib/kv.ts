@@ -15,6 +15,10 @@ class RedisStore {
   async set(key: string, value: any) {
     await this.redis.set(key, JSON.stringify(value));
   }
+
+  async del(key: string) {
+    await this.redis.del(key);
+  }
 }
 
 export const kvStore = new RedisStore();
