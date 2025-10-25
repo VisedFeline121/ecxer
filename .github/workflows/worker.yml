@@ -24,7 +24,9 @@ jobs:
           
       - name: Install dependencies
         working-directory: ./excer
-        run: npm install
+        run: |
+          npm install
+          npm install -g ts-node
         
       - name: Run worker
         working-directory: ./excer
@@ -33,4 +35,4 @@ jobs:
           KV_REST_API_TOKEN: ${{ secrets.KV_REST_API_TOKEN }}
           WORKER_SECRET: ${{ secrets.WORKER_SECRET }}
           VERCEL_APP_URL: ${{ secrets.VERCEL_APP_URL }}
-        run: node scripts/github-worker.js
+        run: ts-node scripts/github-worker.ts
