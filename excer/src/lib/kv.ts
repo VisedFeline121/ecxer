@@ -1,13 +1,10 @@
-import { kv } from '@vercel/kv';
 import Redis from 'ioredis';
 
-const isDev = process.env.NODE_ENV === 'development';
-
-class LocalKVStore {
+class RedisStore {
   private redis: Redis;
 
   constructor() {
-    this.redis = new Redis(process.env.KV_URL || 'redis://localhost:6379');
+    this.redis = new Redis(process.env.REDIS_URL || 'redis://localhost:6379');
   }
 
   async get(key: string) {
@@ -20,5 +17,5 @@ class LocalKVStore {
   }
 }
 
-export const kvStore = isDev ? new LocalKVStore() : kv;
+export const kvStore = new RedisStore();
 
