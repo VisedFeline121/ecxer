@@ -39,6 +39,7 @@ async function runWorker() {
     }
 
     console.log('Worker completed successfully');
+    process.exit(0); // Explicitly exit with success code
   } catch (error) {
     console.error('Worker failed:', error);
     process.exit(1);
