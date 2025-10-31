@@ -1,7 +1,7 @@
 'use client';
 
 import { Menu } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import ErrorBoundary from '../components/ErrorBoundary';
 import ErrorDisplay from '../components/ErrorDisplay';
 import Footer from '../components/Footer';
@@ -49,115 +49,12 @@ export default function Home() {
   const [showDiscussionSortMenu, setShowDiscussionSortMenu] = useState(false);
   const [showMobileTrendingStocks, setShowMobileTrendingStocks] = useState(false);
   const widgetRef = useRef<any>(null);
+  const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const isPollingRef = useRef<boolean>(false);
 
+  // Initial data fetch on mount
   useEffect(() => {
     fetchStocks();
-
-    // Set up SSE connection to get notified when worker updates data
-    let eventSource: EventSource | null = null;
-    let reconnectTimeout: NodeJS.Timeout | null = null;
-    let reconnectAttempts = 0;
-    const MAX_RECONNECT_ATTEMPTS = 5;
-    const INITIAL_RECONNECT_DELAY = 1000;
-    const MAX_RECONNECT_DELAY = 30000;
-
-    function setupEventSource() {
-      if (eventSource) {
-        console.log('[SSE] Cleaning up existing connection');
-        eventSource.close();
-        eventSource = null;
-      }
-
-      if (reconnectTimeout) {
-        clearTimeout(reconnectTimeout);
-        reconnectTimeout = null;
-      }
-
-      console.log('[SSE] Setting up new connection...');
-      eventSource = new EventSource('/api/updates');
-
-      eventSource.onmessage = (event) => {
-        console.log('[SSE] Event received:', event.data);
-        try {
-          const data = JSON.parse(event.data);
-          console.log('[SSE] Parsed data:', data);
-
-          if (data.type === 'update') {
-            console.log('[Worker] Finished, fetching new data...');
-            fetchStocks(true);
-            reconnectAttempts = 0; // Reset attempts on successful update
-          } else if (data.type === 'connected') {
-            console.log(`[SSE] Connection established (Client ID: ${data.clientId})`);
-            reconnectAttempts = 0; // Reset attempts on successful connection
-            clearError(); // Clear any previous connection errors
-          } else if (data.type === 'keepalive') {
-            console.log(`[SSE] Keep-alive received (Client ID: ${data.clientId})`);
-          } else {
-            console.log('[SSE] Unknown event type:', data.type);
-          }
-        } catch (error) {
-          console.error('[SSE] Error parsing event data:', error);
-        }
-      };
-
-      eventSource.onopen = () => {
-        console.log('[SSE] Connection opened');
-        reconnectAttempts = 0; // Reset attempts on successful open
-      };
-
-      eventSource.onerror = (error) => {
-        console.error('[SSE] Connection error:', error);
-        
-        if (eventSource?.readyState === EventSource.CLOSED) {
-          console.log('[SSE] Connection closed, attempting to reconnect...');
-          handleReconnect();
-        } else {
-          console.log('[SSE] Connection in error state:', eventSource?.readyState);
-        }
-      };
-    }
-
-    function handleReconnect() {
-      if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
-        console.log('[SSE] Max reconnection attempts reached');
-        handleError('Unable to establish real-time connection after multiple attempts. Please refresh the page.', 'network');
-        return;
-      }
-
-      if (eventSource) {
-        eventSource.close();
-        eventSource = null;
-      }
-
-      // Exponential backoff with max delay
-      const delay = Math.min(
-        INITIAL_RECONNECT_DELAY * Math.pow(2, reconnectAttempts),
-        MAX_RECONNECT_DELAY
-      );
-
-      console.log(`[SSE] Attempting to reconnect in ${delay}ms (attempt ${reconnectAttempts + 1}/${MAX_RECONNECT_ATTEMPTS})`);
-      
-      reconnectTimeout = setTimeout(() => {
-        reconnectAttempts++;
-        setupEventSource();
-      }, delay);
-    }
-
-    // Initial setup
-    setupEventSource();
-
-    // Cleanup function
-    return () => {
-      console.log('[SSE] Cleaning up SSE connection');
-      if (eventSource) {
-        eventSource.close();
-        eventSource = null;
-      }
-      if (reconnectTimeout) {
-        clearTimeout(reconnectTimeout);
-        reconnectTimeout = null;
-      }
-    };
   }, []);
 
   // Close dropdown when clicking outside
@@ -180,13 +77,63 @@ export default function Home() {
     };
   }, [showSortMenu, showDiscussionSortMenu]);
 
+  // Stop polling function
+  const stopPolling = useCallback(() => {
+    if (pollingIntervalRef.current) {
+      console.log('[Poll] Stopping polling interval');
+      clearInterval(pollingIntervalRef.current);
+      pollingIntervalRef.current = null;
+      isPollingRef.current = false;
+    }
+  }, []);
+
+  // Start polling function
+  const startPolling = useCallback(async () => {
+    if (isPollingRef.current) {
+      console.log('[Poll] Already polling, skipping');
+      return;
+    }
+
+    // Clear any existing interval just to be safe
+    if (pollingIntervalRef.current) {
+      clearInterval(pollingIntervalRef.current);
+      pollingIntervalRef.current = null;
+    }
+
+    console.log('[Poll] Starting polling (every 2 minutes)');
+    isPollingRef.current = true;
+
+    // Initial poll immediately
+    const hasNewData = await fetchStocks(true);
+
+    if (hasNewData) {
+      console.log('[Poll] New data found on initial poll, stopping');
+      stopPolling();
+      return;
+    }
+
+    console.log('[Poll] Setting up 2-minute polling interval');
+    // Then poll every 2 minutes
+    pollingIntervalRef.current = setInterval(async () => {
+      console.log('[Poll] Polling for new data (interval check)...');
+      const hasNewData = await fetchStocks(true);
+
+      if (hasNewData) {
+        console.log('[Poll] New data found, stopping interval');
+        stopPolling();
+      }
+    }, 2 * 60 * 1000); // 2 minutes
+  }, [stopPolling]);
+
   // Set next update time once when data loads, then just count down
   useEffect(() => {
     if (lastUpdated > 0) {
       const nextUpdateTime = lastUpdated + (15 * 60 * 1000); // 15 minutes from last update
       setNextUpdate(nextUpdateTime);
+      // Stop polling when new data arrives (timer resets)
+      stopPolling();
     }
-  }, [lastUpdated]);
+  }, [lastUpdated, stopPolling]);
 
   // Simple timer that updates every second
   useEffect(() => {
@@ -194,9 +141,31 @@ export default function Home() {
       setCurrentTime(Date.now());
       setMarketTimer(formatMarketTimer());
     }, 1000);
-    
+
     return () => clearInterval(interval);
   }, []);
+
+  // Polling logic: start when timer reaches 0
+  useEffect(() => {
+    if (nextUpdate === 0 || lastUpdated === 0) {
+      return; // Wait for initial data load
+    }
+
+    // Set up a check interval to trigger polling exactly when timer hits 0
+    // Check every 5 seconds to avoid too frequent checks
+    const checkInterval = setInterval(() => {
+      const timeLeft = nextUpdate - Date.now();
+      if (timeLeft <= 0 && !isPollingRef.current) {
+        console.log('[Poll] Timer reached 0, starting polling');
+        startPolling();
+      }
+    }, 5000); // Check every 5 seconds (not every second)
+
+    return () => {
+      clearInterval(checkInterval);
+      stopPolling();
+    };
+  }, [nextUpdate, lastUpdated, startPolling, stopPolling]);
 
   // Load TradingView script
   useEffect(() => {
@@ -221,7 +190,7 @@ export default function Home() {
   useEffect(() => {
     if (selectedStock && window.TradingView) {
       const containerId = `tradingview_${selectedStock.symbol}`;
-      
+
       // Remove existing widget if it exists
       if (widgetRef.current) {
         widgetRef.current.remove();
@@ -231,12 +200,12 @@ export default function Home() {
       // Create new widget with fallback exchanges
       const exchanges = ['', 'NASDAQ:', 'NYSE:', 'AMEX:', 'OTC:'];
       let widgetCreated = false;
-      
+
       for (const exchange of exchanges) {
         try {
           const symbol = exchange ? `${exchange}${selectedStock.symbol}` : selectedStock.symbol;
           console.log(`Trying TradingView symbol: ${symbol}`);
-          
+
           widgetRef.current = new window.TradingView!.widget({
             container_id: containerId,
             width: '100%',
@@ -257,7 +226,7 @@ export default function Home() {
             popup_width: '1000',
             popup_height: '650',
           });
-          
+
           widgetCreated = true;
           console.log(`Successfully created TradingView widget for ${symbol}`);
           break;
@@ -266,7 +235,7 @@ export default function Home() {
           continue;
         }
       }
-      
+
       if (!widgetCreated) {
         console.error(`Failed to create TradingView widget for ${selectedStock.symbol} on any exchange`);
       }
@@ -286,7 +255,7 @@ export default function Home() {
       console.log(`Fetching real price data for ${symbol}...`);
       const response = await fetch(`/api/price?symbol=${symbol}`);
       const data = await response.json();
-      
+
       if (response.ok && !data.error) {
         console.log(`Real price data received for ${symbol}:`, data);
         setStockPrice({
@@ -314,70 +283,89 @@ export default function Home() {
     }
   };
 
-  const fetchStocks = async (isAutoRefresh = false) => {
+  const fetchStocks = async (isAutoRefresh = false): Promise<boolean> => {
     try {
       if (isAutoRefresh) {
-        console.log('[Refresh] Starting auto-refresh...');
+        console.log('[Poll] Checking for new data...');
         setRefreshing(true);
+      } else {
+        console.log('[API] Fetching initial data...');
       }
-      
+
       // Clear any previous errors
       clearError();
-      
+
       // Add cache-busting parameter to prevent caching
-      console.log('[API] Fetching data...');
       const response = await fetch('/api/reddit?_=' + Date.now());
-      
+
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
-      
+
       const data = await response.json();
-      
+
       // Validate data structure
       if (!data || typeof data !== 'object') {
         throw new Error('Invalid data format received from server');
       }
-      
+
+      const serverLastUpdated = typeof data.lastUpdated === 'number' ? data.lastUpdated : Date.now();
+      // Only consider it new data if we already have data (lastUpdated > 0) AND server has newer timestamp
+      // During initial load (lastUpdated === 0), we update data but don't consider it "new" for polling purposes
+      const hasNewData = lastUpdated > 0 && serverLastUpdated > lastUpdated;
+
       console.log('[API] Received data:', {
         stocksCount: data.stocks?.length || 0,
-        lastUpdated: new Date(data.lastUpdated).toISOString(),
-        currentLastUpdated: lastUpdated ? new Date(lastUpdated).toISOString() : 'none',
+        serverLastUpdated: new Date(serverLastUpdated).toISOString(),
+        localLastUpdated: lastUpdated ? new Date(lastUpdated).toISOString() : 'none',
+        hasNewData,
+        isInitialLoad: lastUpdated === 0,
         firstStock: data.stocks?.[0]?.symbol,
         dataSource: data.dataSource
       });
-      
+
       // Validate and sanitize data
-      const newStocks = Array.isArray(data.stocks) ? data.stocks.filter((stock: any) => 
-        stock && 
-        typeof stock.symbol === 'string' && 
+      const newStocks = Array.isArray(data.stocks) ? data.stocks.filter((stock: any) =>
+        stock &&
+        typeof stock.symbol === 'string' &&
         stock.symbol.length > 0 &&
         Array.isArray(stock.posts)
       ) : [];
-      
-      setStocks(newStocks);
-      setLastUpdated(typeof data.lastUpdated === 'number' ? data.lastUpdated : Date.now());
-      
-      // Update selected stock with fresh data (with validation)
-      if (selectedStock && newStocks.length > 0) {
-        const updatedStock = newStocks.find((s: StockData) => s.symbol === selectedStock.symbol);
-        if (updatedStock) {
-          setSelectedStock(updatedStock);
+
+      // Always update data if it's initial load OR if we have genuinely new data
+      // During polling: only update if server timestamp is actually newer than what we had
+      const shouldUpdate = lastUpdated === 0 || hasNewData;
+
+      if (shouldUpdate) {
+        console.log(`[API] Updating data: ${lastUpdated === 0 ? 'initial load' : 'new data detected'}`);
+        setStocks(newStocks);
+        setLastUpdated(serverLastUpdated);
+
+        // Update selected stock with fresh data (with validation)
+        if (selectedStock && newStocks.length > 0) {
+          const updatedStock = newStocks.find((s: StockData) => s.symbol === selectedStock.symbol);
+          if (updatedStock) {
+            setSelectedStock(updatedStock);
+          }
+        } else if (newStocks.length > 0) {
+          // Validate first stock before selecting
+          const firstStock = newStocks[0];
+          if (firstStock && firstStock.symbol) {
+            setSelectedStock(firstStock);
+          }
         }
-      } else if (newStocks.length > 0) {
-        // Validate first stock before selecting
-        const firstStock = newStocks[0];
-        if (firstStock && firstStock.symbol) {
-          setSelectedStock(firstStock);
+
+        if (hasNewData && isAutoRefresh) {
+          console.log('[Poll] New data found! Stopping polling.');
         }
+      } else {
+        console.log('[Poll] No new data yet, server timestamp unchanged');
       }
-      
-      if (isAutoRefresh) {
-        console.log('Auto-refresh completed successfully');
-      }
+
+      return hasNewData;
     } catch (error) {
       console.error('Error fetching stocks:', error);
-      
+
       // Determine error type and handle appropriately
       if (isNetworkError(error)) {
         handleError(error, 'network');
@@ -386,6 +374,7 @@ export default function Home() {
       } else {
         handleError(error, 'data');
       }
+      return false;
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -410,16 +399,16 @@ export default function Home() {
       return 'Calculating...';
     }
     const diff = nextUpdateTime - currentTime;
-    
+
     // If we're past the update time but not by much (within 30 seconds), show updating
     if (diff <= 0 && diff > -30000) return 'Updating...';
-    
+
     // If we're way past the update time, recalculate
     if (diff <= -30000) return 'Calculating...';
-    
+
     const minutes = Math.floor(diff / 60000);
     const seconds = Math.floor((diff % 60000) / 1000);
-    
+
     if (minutes > 0) return `${minutes}m ${seconds}s`;
     return `${seconds}s`;
   };
@@ -427,7 +416,7 @@ export default function Home() {
   const getNextMarketTime = () => {
     // Get current time in NY timezone
     const now = new Date();
-    
+
     // Get NY time components using Intl.DateTimeFormat
     const nyFormatter = new Intl.DateTimeFormat('en-US', {
       timeZone: 'America/New_York',
@@ -439,7 +428,7 @@ export default function Home() {
       second: '2-digit',
       hour12: false
     });
-    
+
     const nyParts = nyFormatter.formatToParts(now);
     const nyDate = {
       year: parseInt(nyParts.find(p => p.type === 'year')?.value || '0'),
@@ -457,7 +446,7 @@ export default function Home() {
     const isWeekday = nyDayOfWeek >= 1 && nyDayOfWeek <= 5;
 
     // Check if market is currently open (9:30 AM - 4:00 PM ET on weekdays)
-    const isMarketOpen = isWeekday && 
+    const isMarketOpen = isWeekday &&
       ((nyDate.hour > 9) || (nyDate.hour === 9 && nyDate.minute >= 30)) &&
       ((nyDate.hour < 16) || (nyDate.hour === 16 && nyDate.minute === 0));
 
@@ -470,14 +459,14 @@ export default function Home() {
         20, // 4:00 PM ET = 20:00 UTC (during EDT)
         0
       ));
-      
+
       return { time: targetUTC.getTime(), isOpening: false };
     } else {
       // Market is closed, show time until next open (9:30 AM ET)
-    const targetYear = nyDate.year;
-    const targetMonth = nyDate.month;
-    let targetDay = nyDate.day;
-      
+      const targetYear = nyDate.year;
+      const targetMonth = nyDate.month;
+      let targetDay = nyDate.day;
+
       // If we're past 4:00 PM today or it's weekend, move to next trading day
       if (nyDate.hour >= 16 || !isWeekday) {
         targetDay += 1;
@@ -506,24 +495,24 @@ export default function Home() {
     const { time, isOpening } = getNextMarketTime();
     const now = Date.now();
     const diff = time - now;
-    
+
     if (diff <= 0) return 'Calculating...';
-    
+
     // Calculate days first
     const days = Math.floor(diff / (24 * 3600000));
     const remainingMs = diff % (24 * 3600000);
-    
+
     // Then hours from remaining
     const hours = Math.floor(remainingMs / 3600000);
     const remainingAfterHours = remainingMs % 3600000;
-    
+
     // Then minutes and seconds
     const minutes = Math.floor(remainingAfterHours / 60000);
     const seconds = Math.floor((remainingAfterHours % 60000) / 1000);
-    
+
     // Format with colons between values
     const timeStr = `${days}:${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
-    
+
     return `Time to market ${isOpening ? 'open' : 'close'}: ${timeStr}`;
   };
 
@@ -531,7 +520,7 @@ export default function Home() {
     const sorted = [...stocks].sort((a, b) => {
       let aValue: number;
       let bValue: number;
-      
+
       switch (sortBy) {
         case 'posts':
           aValue = a.uniquePosts;
@@ -549,10 +538,10 @@ export default function Home() {
           aValue = a.uniquePosts;
           bValue = b.uniquePosts;
       }
-      
+
       return sortOrder === 'desc' ? bValue - aValue : aValue - bValue;
     });
-    
+
     return sorted;
   };
 
@@ -581,11 +570,11 @@ export default function Home() {
 
   const getSortedDiscussions = () => {
     if (!selectedStock) return [];
-    
+
     const sorted = [...selectedStock.posts].sort((a, b) => {
       let aValue: number;
       let bValue: number;
-      
+
       switch (discussionSortBy) {
         case 'date':
           aValue = a.created_utc;
@@ -599,10 +588,10 @@ export default function Home() {
           aValue = a.created_utc;
           bValue = b.created_utc;
       }
-      
+
       return discussionSortOrder === 'desc' ? aValue - bValue : bValue - aValue;
     });
-    
+
     return sorted;
   };
 
@@ -635,90 +624,90 @@ export default function Home() {
   return (
     <ErrorBoundary>
       <div className="min-h-screen bg-gray-900 text-white">
-      <Header 
-        marketTimer={marketTimer}
-        lastUpdated={lastUpdated}
-        nextUpdate={nextUpdate}
-        refreshing={refreshing}
-        formatTimeAgo={formatTimeAgo}
-        formatTimeToNext={formatTimeToNext}
-      />
+        <Header
+          marketTimer={marketTimer}
+          lastUpdated={lastUpdated}
+          nextUpdate={nextUpdate}
+          refreshing={refreshing}
+          formatTimeAgo={formatTimeAgo}
+          formatTimeToNext={formatTimeToNext}
+        />
 
-      <div className="max-w-7xl mx-auto p-6">
-        {/* Error Display */}
-        {error && (
-          <div className="mb-6">
-            <ErrorDisplay
-              error={error.message}
-              type={error.type}
-              onRetry={() => retry(fetchStocks)}
+        <div className="max-w-7xl mx-auto p-6">
+          {/* Error Display */}
+          {error && (
+            <div className="mb-6">
+              <ErrorDisplay
+                error={error.message}
+                type={error.type}
+                onRetry={() => retry(fetchStocks)}
+              />
+            </div>
+          )}
+
+          {/* Mobile Trending Stocks Button */}
+          <div className="lg:hidden mb-4">
+            <button
+              onClick={() => setShowMobileTrendingStocks(true)}
+              className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+            >
+              <Menu className="w-5 h-5" />
+              <span>Trending Stocks ({stocks.length})</span>
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-stretch">
+            <TrendingStocks
+              stocks={stocks}
+              selectedStock={selectedStock}
+              sortBy={sortBy}
+              sortOrder={sortOrder}
+              showSortMenu={showSortMenu}
+              onStockSelect={setSelectedStock}
+              onSortChange={handleSort}
+              onSortOrderToggle={toggleSortOrder}
+              onSortMenuToggle={() => setShowSortMenu(!showSortMenu)}
+              getSortedStocks={getSortedStocks}
+              getSortLabel={getSortLabel}
+            />
+
+            <StockDetails
+              selectedStock={selectedStock}
+              stockPrice={stockPrice}
+              priceLoading={priceLoading}
+              chartType={chartType}
+              discussionSortBy={discussionSortBy}
+              discussionSortOrder={discussionSortOrder}
+              showDiscussionSortMenu={showDiscussionSortMenu}
+              onChartTypeChange={setChartType}
+              onDiscussionSortChange={handleDiscussionSort}
+              onDiscussionSortOrderToggle={toggleDiscussionSortOrder}
+              onDiscussionSortMenuToggle={() => setShowDiscussionSortMenu(!showDiscussionSortMenu)}
+              getSortedDiscussions={getSortedDiscussions}
+              getDiscussionSortLabel={getDiscussionSortLabel}
             />
           </div>
-        )}
-
-        {/* Mobile Trending Stocks Button */}
-        <div className="lg:hidden mb-4">
-          <button
-            onClick={() => setShowMobileTrendingStocks(true)}
-            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-          >
-            <Menu className="w-5 h-5" />
-            <span>Trending Stocks ({stocks.length})</span>
-          </button>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-stretch">
-          <TrendingStocks
-            stocks={stocks}
-            selectedStock={selectedStock}
-            sortBy={sortBy}
-            sortOrder={sortOrder}
-            showSortMenu={showSortMenu}
-            onStockSelect={setSelectedStock}
-            onSortChange={handleSort}
-            onSortOrderToggle={toggleSortOrder}
-            onSortMenuToggle={() => setShowSortMenu(!showSortMenu)}
-            getSortedStocks={getSortedStocks}
-            getSortLabel={getSortLabel}
-          />
+        {/* Mobile Trending Stocks Popup */}
+        <MobileTrendingStocks
+          isOpen={showMobileTrendingStocks}
+          stocks={stocks}
+          selectedStock={selectedStock}
+          sortBy={sortBy}
+          sortOrder={sortOrder}
+          showSortMenu={showSortMenu}
+          onClose={() => setShowMobileTrendingStocks(false)}
+          onStockSelect={setSelectedStock}
+          onSortChange={handleSort}
+          onSortOrderToggle={toggleSortOrder}
+          onSortMenuToggle={() => setShowSortMenu(!showSortMenu)}
+          getSortedStocks={getSortedStocks}
+          getSortLabel={getSortLabel}
+        />
 
-          <StockDetails
-            selectedStock={selectedStock}
-            stockPrice={stockPrice}
-            priceLoading={priceLoading}
-            chartType={chartType}
-            discussionSortBy={discussionSortBy}
-            discussionSortOrder={discussionSortOrder}
-            showDiscussionSortMenu={showDiscussionSortMenu}
-            onChartTypeChange={setChartType}
-            onDiscussionSortChange={handleDiscussionSort}
-            onDiscussionSortOrderToggle={toggleDiscussionSortOrder}
-            onDiscussionSortMenuToggle={() => setShowDiscussionSortMenu(!showDiscussionSortMenu)}
-            getSortedDiscussions={getSortedDiscussions}
-            getDiscussionSortLabel={getDiscussionSortLabel}
-          />
-        </div>
+        <Footer />
       </div>
-
-      {/* Mobile Trending Stocks Popup */}
-      <MobileTrendingStocks
-        isOpen={showMobileTrendingStocks}
-        stocks={stocks}
-        selectedStock={selectedStock}
-        sortBy={sortBy}
-        sortOrder={sortOrder}
-        showSortMenu={showSortMenu}
-        onClose={() => setShowMobileTrendingStocks(false)}
-        onStockSelect={setSelectedStock}
-        onSortChange={handleSort}
-        onSortOrderToggle={toggleSortOrder}
-        onSortMenuToggle={() => setShowSortMenu(!showSortMenu)}
-        getSortedStocks={getSortedStocks}
-        getSortLabel={getSortLabel}
-      />
-
-      <Footer />
-    </div>
     </ErrorBoundary>
   );
 }
