@@ -206,10 +206,20 @@ export default function Home() {
           const symbol = exchange ? `${exchange}${selectedStock.symbol}` : selectedStock.symbol;
           console.log(`Trying TradingView symbol: ${symbol}`);
 
+          // Calculate responsive height based on screen size
+          const getChartHeight = () => {
+            if (typeof window !== 'undefined') {
+              if (window.innerWidth < 640) return 256; // mobile: h-64
+              if (window.innerWidth < 768) return 320; // sm: h-80
+              return 384; // md+: h-96
+            }
+            return 384;
+          };
+
           widgetRef.current = new window.TradingView!.widget({
             container_id: containerId,
             width: '100%',
-            height: 400,
+            height: getChartHeight(),
             symbol: symbol,
             interval: 'D',
             timezone: 'Etc/UTC',
@@ -225,6 +235,7 @@ export default function Home() {
             show_popup_button: true,
             popup_width: '1000',
             popup_height: '650',
+            autosize: false, // Disable autosize to prevent overflow
           });
 
           widgetCreated = true;
@@ -633,10 +644,10 @@ export default function Home() {
           formatTimeToNext={formatTimeToNext}
         />
 
-        <div className="max-w-7xl mx-auto p-6">
+        <div className="max-w-7xl mx-auto px-4 py-4 sm:p-6">
           {/* Error Display */}
           {error && (
-            <div className="mb-6">
+            <div className="mb-4 sm:mb-6">
               <ErrorDisplay
                 error={error.message}
                 type={error.type}
@@ -646,17 +657,17 @@ export default function Home() {
           )}
 
           {/* Mobile Trending Stocks Button */}
-          <div className="lg:hidden mb-4">
+          <div className="lg:hidden mb-3 sm:mb-4">
             <button
               onClick={() => setShowMobileTrendingStocks(true)}
-              className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+              className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors w-full sm:w-auto"
             >
               <Menu className="w-5 h-5" />
-              <span>Trending Stocks ({stocks.length})</span>
+              <span className="text-sm sm:text-base">Trending Stocks ({stocks.length})</span>
             </button>
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-stretch">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6 items-stretch">
             <TrendingStocks
               stocks={stocks}
               selectedStock={selectedStock}

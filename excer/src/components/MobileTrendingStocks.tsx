@@ -42,21 +42,21 @@ export default function MobileTrendingStocks({
       <div className="absolute inset-0 bg-gray-800">
         <div className="flex flex-col h-full">
           {/* Header */}
-          <div className="flex items-center justify-between p-6 border-b border-gray-700">
-            <h2 className="text-xl font-semibold flex items-center">
-              <TrendingUp className="w-6 h-6 mr-3" />
-              Trending Stocks ({stocks.length})
+          <div className="flex items-center justify-between px-4 py-4 sm:p-6 border-b border-gray-700">
+            <h2 className="text-lg sm:text-xl font-semibold flex items-center">
+              <TrendingUp className="w-5 h-5 sm:w-6 sm:h-6 mr-2 sm:mr-3" />
+              <span className="truncate">Trending Stocks ({stocks.length})</span>
             </h2>
             <button
               onClick={onClose}
-              className="p-3 rounded-lg bg-gray-700 text-gray-300 hover:bg-gray-600 transition-colors"
+              className="p-2 sm:p-3 rounded-lg bg-gray-700 text-gray-300 hover:bg-gray-600 transition-colors flex-shrink-0"
             >
-              <X className="w-6 h-6" />
+              <X className="w-5 h-5 sm:w-6 sm:h-6" />
             </button>
           </div>
 
           {/* Sort Controls */}
-          <div className="p-6 border-b border-gray-700">
+          <div className="px-4 py-4 sm:p-6 border-b border-gray-700">
             <div className="flex items-center justify-between">
               <div className="relative">
                 <div className="flex items-center gap-2">
@@ -120,7 +120,7 @@ export default function MobileTrendingStocks({
           </div>
           
           {/* Stocks List */}
-          <div className="flex-1 overflow-y-auto p-6 space-y-4">
+          <div className="flex-1 overflow-y-auto px-4 py-4 sm:p-6 space-y-3 sm:space-y-4">
             {getSortedStocks().map((stock) => (
               <div
                 key={stock.symbol}
@@ -128,21 +128,21 @@ export default function MobileTrendingStocks({
                   onStockSelect(stock);
                   onClose();
                 }}
-                className={`p-5 rounded-lg cursor-pointer transition-colors ${
+                className={`p-4 sm:p-5 rounded-lg cursor-pointer transition-colors ${
                   selectedStock?.symbol === stock.symbol
                     ? 'bg-blue-600'
                     : 'bg-gray-700 hover:bg-gray-600'
                 }`}
               >
-                <div className="flex items-center justify-between mb-3">
-                  <span className="font-bold text-xl">${stock.symbol}</span>
+                <div className="flex items-center justify-between mb-2 sm:mb-3">
+                  <span className="font-bold text-lg sm:text-xl">${stock.symbol}</span>
                   <div className="flex items-center">
                     {stock.sentimentScore > 0 ? (
                       <TrendingUp className="w-4 h-4 text-green-400" />
                     ) : (
                       <TrendingDown className="w-4 h-4 text-red-400" />
                     )}
-                    <span className={`ml-1 text-base ${
+                    <span className={`ml-1 text-sm sm:text-base ${
                       stock.sentimentScore > 0 ? 'text-green-400' : 'text-red-400'
                     }`}>
                       {stock.sentimentScore > 0 ? '+' : ''}{stock.sentimentScore.toFixed(2)}
@@ -150,13 +150,13 @@ export default function MobileTrendingStocks({
                   </div>
                 </div>
                 
-                <div className="flex items-center justify-between text-base text-gray-300">
+                <div className="flex items-center justify-between text-sm sm:text-base text-gray-300">
                   <span className="flex items-center">
-                    <MessageCircle className="w-5 h-5 mr-2" />
+                    <MessageCircle className="w-4 h-4 sm:w-5 sm:h-5 mr-1.5 sm:mr-2" />
                     {stock.uniquePosts} posts
                   </span>
                   <span className="flex items-center">
-                    <Users className="w-5 h-5 mr-2" />
+                    <Users className="w-4 h-4 sm:w-5 sm:h-5 mr-1.5 sm:mr-2" />
                     {stock.positiveMentions}↑ {stock.negativeMentions}↓
                   </span>
                 </div>
